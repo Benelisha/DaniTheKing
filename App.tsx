@@ -142,9 +142,8 @@ function Workspace() {
       setLoading(false);
     }
   }, []);
-  const refreshLead = useCallback(async (id: string) => {
-    const updated = await api<Lead>(`/leads/${id}`);
-    setLeads(current => current.map(lead => lead.id === id ? updated : lead));
+  const updateLeadStatus = useCallback((id: string, callStatus: string, version: number) => {
+    setLeads(current => current.map(lead => lead.id === id ? {...lead, callStatus, version} : lead));
   }, []);
   useEffect(() => {
     void refresh();
@@ -319,7 +318,7 @@ function Workspace() {
                         <Badge text={l.callStatus} />
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
-                        <GenerationControls lead={l} refresh={() => refreshLead(l.id)}/>
+                        <GenerationControls lead={l} refresh={refresh}/>
                       </View>
                     </Pressable>
                   ))
@@ -354,7 +353,8 @@ function Workspace() {
               <LeadDetail
                 key={selected.id}
                 lead={selected}
-                refresh={() => refreshLead(selected.id)}
+                refresh={refresh}
+                onStatusSaved={updateLeadStatus}
                 close={closeLead}
               />
             )}
@@ -397,10 +397,12 @@ function LeadDetail({
   lead,
   close,
   refresh,
+  onStatusSaved,
 }: {
   lead: Lead;
   close: () => void;
   refresh: () => Promise<void>;
+  onStatusSaved: (id: string, status: string, version: number) => void;
 }) {
   const detailScroll = useRef<ScrollView>(null);
   const [examplesY, setExamplesY] = useState(0);
@@ -427,14 +429,14 @@ function LeadDetail({
     setBusy(true);
     setError("");
     try {
-      await api(`/leads/${lead.id}`, "PATCH", {
+      const result = await api<{version: number}>(`/leads/${lead.id}`, "PATCH", {
         expectedVersion: lead.version,
         callStatus: nextStatus,
         ...(note.trim() ? { note: note.trim() } : {}),
       });
       setNote("");
+      onStatusSaved(lead.id, nextStatus, result.version);
       setSaved("Saved to Firestore.");
-      await refresh();
       await loadHistory();
     } catch (e) {
       setStatus(lead.callStatus);

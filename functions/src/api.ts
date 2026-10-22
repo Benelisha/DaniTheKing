@@ -112,15 +112,6 @@ class BackOfficeController {
       cursor: result.size > 100 ? result.docs[99].id : null,
     };
   }
-  @Get("leads/:id") async lead(@Param("id") id: string) {
-    this.id(id);
-    const [lead, check] = await Promise.all([
-      db().doc(`leads/${id}`).get(),
-      db().doc(`googleVerifications/${id}`).get(),
-    ]);
-    if (!lead.exists) throw new HttpException("Lead not found", 404);
-    return {id, ...lead.data(), googleVerification:check.data() || null, googleVerified:verified(lead.data()!, check.data())};
-  }
   @Post("leads") async create(@Body() body: unknown, @Req() req: AuthRequest) {
     const lead = leadSchema.parse(body);
     if (!lead.profile?.googleMapsUrl || !listingUrl(lead.profile.googleMapsUrl)) throw new HttpException("Provide an actual Google Maps listing URL; search-only leads cannot be imported.", 400);
