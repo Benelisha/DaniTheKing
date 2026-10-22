@@ -96,6 +96,7 @@ test(
       for (const [method, path] of [
         ["GET", "me"],
         ["GET", "leads"],
+        ["GET", "leads/00000000000000000000000000000000"],
         ["GET", "settings"],
         ["GET", "runs"],
         ["POST", "leads/00000000000000000000000000000000/verification"],
@@ -188,6 +189,15 @@ test(
           const afterEdit = (await db().doc(`leads/${id}`).get()).data()!;
           assert.equal(afterEdit.researchNotes, contentBody.researchNotes);
           assert.equal(afterEdit.callStatus, "Follow up");
+          const detail = await fetch(`http://127.0.0.1:${port}/api/leads/${id}`, {headers});
+          assert.equal(detail.status, 200);
+          const refreshed = await detail.json() as any;
+          assert.equal(refreshed.id, id);
+          assert.equal(refreshed.callStatus, "Follow up");
+          assert.equal(refreshed.version, before.version + 2);
+          assert.equal(refreshed.googleVerified, false);
+          const missing = await fetch(`http://127.0.0.1:${port}/api/leads/00000000000000000000000000000000`, {headers});
+          assert.equal(missing.status, 404);
 
           const after = (await db().doc(`leads/${id}`).get()).data()!;
           assert.equal(after.callStatus, "Follow up");
@@ -205,16 +215,18 @@ test(
           assert.equal(forged.status,400);
           const reviewed = await fetch(`http://127.0.0.1:${port}/api/leads/${id}/verification`,{method:"POST",headers,body:JSON.stringify(reviewBody)});
           assert.equal(reviewed.status,201);
+          const verifiedDetail = await fetch(`http://127.0.0.1:${port}/api/leads/${id}`, {headers});
+          assert.equal((await verifiedDetail.json() as any).googleVerified, true);
           const listAfter = await fetch(`http://127.0.0.1:${port}/api/leads`,{headers});
           assert.ok((await listAfter.json() as any).leads.some((l:any)=>l.id===id&&l.googleVerified));
           const noExamples = await fetch(`http://127.0.0.1:${port}/api/leads/${id}/generations`,{method:"POST",headers,body:JSON.stringify({expectedVersion:after.version+1})});
           assert.equal(noExamples.status,409);
         }
-        for (const path of ["me", "leads", "settings", "runs", "generator/status"]) {
+        for (const path of ["me", "leads", "leads/00000000000000000000000000000000", "settings", "runs", "generator/status"]) {
           const response = await fetch(`http://127.0.0.1:${port}/api/${path}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
-          assert.equal(response.status, expected, `${email} ${path}`);
+          assert.equal(response.status, expected === 200 && path.startsWith("leads/") ? 404 : expected, `${email} ${path}`);
         }
       }
     } finally {

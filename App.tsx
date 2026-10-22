@@ -42,6 +42,10 @@ function workspacePage() {
     ? "Discovery"
     : "Leads";
 }
+function leadIdFromPath() {
+  if (typeof window === "undefined") return null;
+  return /^\/leads\/([a-f0-9]{32})\/?$/.exec(window.location.pathname)?.[1] || null;
+}
 export default function App() {
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false),
@@ -90,27 +94,35 @@ function Workspace() {
     [verificationView,setVerificationView] = useState("Verified Google businesses"),
     [platformFilter, setPlatformFilter] = useState("All platforms"),
     [presenceFilter, setPresenceFilter] = useState("All findings"),
-    [selected, setSelected] = useState<Lead | null>(null);
+    [selectedId, setSelectedId] = useState<string | null>(leadIdFromPath);
+  const selected = leads.find(lead => lead.id === selectedId) || null;
+  function openLead(lead: Lead) {
+    if (typeof window !== "undefined") window.history.pushState(null, "", `/leads/${lead.id}`);
+    setSelectedId(lead.id);
+  }
+  function closeLead() {
+    if (typeof window !== "undefined") window.history.pushState(null, "", "/leads");
+    setSelectedId(null);
+  }
   function navigateWorkspace(nextPage: string) {
     if (typeof window !== "undefined") {
       const path = nextPage === "Leads" ? "/leads" : "/discovery";
       if (window.location.pathname !== path) window.history.pushState(null, "", path);
     }
-    setSelected(null);
+    setSelectedId(null);
     setNavigationOpen(false);
     setPage(nextPage);
   }
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPopState = () => {
-      setSelected(null);
+      setSelectedId(leadIdFromPath());
       setPage(workspacePage());
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError("");
     try {
       let result: Lead[] = [],
@@ -124,14 +136,15 @@ function Workspace() {
         cursor = data.cursor;
       } while (cursor);
       setLeads(result);
-      setSelected((current) =>
-        current ? result.find((l) => l.id === current.id) || null : null,
-      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
+  }, []);
+  const refreshLead = useCallback(async (id: string) => {
+    const updated = await api<Lead>(`/leads/${id}`);
+    setLeads(current => current.map(lead => lead.id === id ? updated : lead));
   }, []);
   useEffect(() => {
     void refresh();
@@ -242,7 +255,7 @@ function Workspace() {
                       key={l.id}
                       accessibilityRole="button"
                       accessibilityLabel={`Open ${l.businessName}`}
-                      onPress={() => setSelected(l)}
+                      onPress={() => openLead(l)}
                       style={({ hovered }: any) => [
                         styles.tableRow,
                         !wide && {
@@ -306,7 +319,7 @@ function Workspace() {
                         <Badge text={l.callStatus} />
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
-                        <GenerationControls lead={l} refresh={refresh}/>
+                        <GenerationControls lead={l} refresh={() => refreshLead(l.id)}/>
                       </View>
                     </Pressable>
                   ))
@@ -327,13 +340,13 @@ function Workspace() {
         transparent
         visible={!!selected}
         animationType="fade"
-        onRequestClose={() => setSelected(null)}
+        onRequestClose={closeLead}
       >
         <View style={styles.scrim}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close lead details"
-            onPress={() => setSelected(null)}
+            onPress={closeLead}
             style={StyleSheet.absoluteFillObject}
           />
           <View style={[styles.drawer, { width: width > 650 ? 580 : "100%" }]}>
@@ -341,8 +354,8 @@ function Workspace() {
               <LeadDetail
                 key={selected.id}
                 lead={selected}
-                refresh={refresh}
-                close={() => setSelected(null)}
+                refresh={() => refreshLead(selected.id)}
+                close={closeLead}
               />
             )}
           </View>
@@ -451,13 +464,11 @@ function LeadDetail({
       <Button subtle label={`View business examples · ${lead.competitors?.length || 0}/5`} icon="external-link" onPress={() => detailScroll.current?.scrollTo({y: examplesY, animated:true})} />
       <View style={s.section}>
         <Text style={s.h2}>Online presence · socials & websites</Text>
-        <Text style={s.body}>Found links come from recorded business sources. “Not found” describes dated searches; “Not checked” means no research is recorded.</Text>
-        {onlinePresence(lead).map(p=><View key={p.platform} style={{gap:4,paddingVertical:6}}>
-          <Text style={{fontWeight:"600",color:colors.ink}}>{p.platform} · {p.status === "Not found" ? "Not found in checked sources" : p.status}</Text>
-          {p.links ? p.links.map(link=><ExternalLink key={link.url} url={link.url} label={link.label} />) : !!p.url && <ExternalLink url={p.url} label={`Open ${p.platform}`} />}
-          {!!p.notes && <Text style={s.body}>{p.notes}</Text>}
-          {!!p.checkedAt && <Text style={s.body}>Checked {new Date(p.checkedAt).toLocaleDateString(undefined,{timeZone:"UTC"})}</Text>}
-          {!!p.sourceUrl && p.sourceUrl !== p.url && <ExternalLink url={p.sourceUrl} label="Verification source" />}
+        {onlinePresence(lead).map(p => <View key={p.platform} style={{gap:4,paddingVertical:6}}>
+          {p.status === "Found" && (p.links?.length || p.url)
+            ? (p.links?.length ? p.links : [{url:p.url!,label:p.platform}]).map(link =>
+                <ExternalLink key={link.url} url={link.url} label={`${p.platform} · ${link.url}`} />)
+            : <Text style={{fontWeight:"600",color:colors.ink}}>{p.platform} · {p.status}</Text>}
         </View>)}
       </View>
       <GoogleVerification key={`verify:${lead.id}:${lead.version}`} lead={lead} refresh={refresh}/>

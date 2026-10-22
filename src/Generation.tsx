@@ -6,7 +6,7 @@ import {Button,ExternalLink,Field,Choices,s} from "./ui";
 export function WorkerStatus() {
   const [state,setState]=useState<{online:boolean;ready:boolean}|null>(null);
   useEffect(()=>{let active=true;const load=()=>api('/generator/status').then(v=>{if(active)setState(v);}).catch(()=>{if(active)setState(null);});void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer);};},[]);
-  return <Text style={s.body}>{state?.online && state.ready ? 'Generator online · ready on your computer' : state ? 'Generator offline · queued jobs wait for your computer' : 'Generator status unavailable'}</Text>;
+  return <Text style={s.body}>{state?.online && state.ready ? 'Generator online · ready on your computer' : state ? 'Generator offline · queued jobs cannot start until the local worker is running' : 'Generator status unavailable'}</Text>;
 }
 export function GenerationControls({lead,refresh}:{lead:Lead;refresh:()=>Promise<void>}) {
   const [id,setId]=useState(lead.generationId),[job,setJob]=useState<any>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
@@ -25,7 +25,8 @@ export function GenerationControls({lead,refresh}:{lead:Lead;refresh:()=>Promise
       <Button label={busy?'Queuing…':lead.generatedWebsiteUrl?'Regenerate':'Generate'} icon="zap" disabled={!eligible||busy||running} onPress={()=>void generate()}/>
       {!!(job?.publishedUrl||lead.generatedWebsiteUrl)&&<ExternalLink url={job?.publishedUrl||lead.generatedWebsiteUrl!} label="Open website"/>}
     </View>
-    {!!job&&<Text style={s.body}>{job.status}{job.spentUsd>0?` · $${job.spentUsd.toFixed(3)} API usage`:''}</Text>}
+    {!!job&&<Text style={s.body}>{({queued:'Queued · waiting for the local generator',researching:'Inspecting the five example websites',generating:'Generating website',validating:'Checking desktop and mobile layouts',publishing:'Publishing website',completed:'Website ready',failed:'Generation failed'} as Record<string,string>)[job.status] || job.status}{job.spentUsd>0?` · $${job.spentUsd.toFixed(3)} API usage`:''}</Text>}
+    {job?.status==='queued'&&<Text style={s.body}>Starts when the generator is online and earlier jobs finish. No completion estimate yet.</Text>}
     {!eligible&&<Text style={s.body}>{!lead.googleVerified?'Google listing verification required':lead.callStatus==='Do not call'?'Contact suppressed':'Five competitor examples required'}</Text>}
     {!!(error||job?.error)&&<Text style={s.error}>{error||job.error}</Text>}
     {job?.status==='failed'&&<Button subtle label="Retry saved job" disabled={busy||!eligible} onPress={()=>void retry()}/>}
