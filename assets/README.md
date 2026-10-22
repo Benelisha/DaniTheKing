@@ -1,0 +1,1 @@
+Feather.ttf is the Feather icon font supplied by @expo/vector-icons (MIT license). It is copied to a first-party asset path so exported Firebase Hosting builds never depend on paths beneath node_modules. Source: https://github.com/feathericons/feather

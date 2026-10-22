@@ -1,0 +1,40 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "generations",
+      "fieldPath": "snapshot",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "artifacts",
+      "fieldPath": "html",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "artifacts",
+      "fieldPath": "response",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "artifacts",
+      "fieldPath": "text",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "artifacts",
+      "fieldPath": "image",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "references",
+      "fieldPath": "screenshot",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "references",
+      "fieldPath": "analysis",
+      "indexes": []
+    }
+  ]
+}

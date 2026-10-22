@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "DaniBoy",
+    "slug": "daniboy",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "DaniBoy — Lead workspace"
+    },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "dev.alined.daniboy" },
+    "android": { "package": "dev.alined.daniboy" }
+  }
+}
