@@ -868,7 +868,7 @@ function Discovery({
           onChangeText={(v) => setDraft({ ...draft, maxCandidates: Number(v) })}
         />
         <Field
-          label="Search locations — one US city/state per line"
+          label="Search locations — one US city or county/state per line"
           multiline
           value={locations}
           onChangeText={setLocations}

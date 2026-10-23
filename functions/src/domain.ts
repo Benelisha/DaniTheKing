@@ -205,13 +205,7 @@ export const DEFAULT_SETTINGS: z.infer<typeof settingsSchema> = {
   times: ["09:00", "13:00", "17:00"],
   timeZone: "America/New_York",
   categories: CATEGORIES.slice(0, 5),
-  locations: [
-    "Miami, FL",
-    "Indianapolis, IN",
-    "Phoenix, AZ",
-    "Austin, TX",
-    "Columbus, OH",
-  ],
+  locations: ["Miami-Dade County, FL"],
   maxCandidates: 20,
 };
 export function normalizePhone(input: string): string | null {
