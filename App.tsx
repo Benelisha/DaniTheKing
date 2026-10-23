@@ -344,7 +344,7 @@ function Workspace() {
               </View>
             </>
           ) : (
-            <Text style={s.h2}>Coming soon</Text>
+            <DiscoveryWorkspace />
           )}
         </ScrollView>
       </View>
@@ -756,6 +756,20 @@ function AddLead({
       />
     </ScrollView>
   );
+}
+function DiscoveryWorkspace() {
+  const [data, setData] = useState<{config: Settings; integration: any; runs: Run[]; categories: string[]} | null>(null);
+  const [error, setError] = useState("");
+  const refresh = useCallback(async () => {
+    try {
+      const [configuration, runs, me] = await Promise.all([api("/settings"), api("/runs"), api("/me")]);
+      setData({config: configuration.settings, integration: configuration.integration, runs, categories: me.categories});
+      setError("");
+    } catch (e) { setError((e as Error).message); }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+  if (!data) return <View style={{gap:12}}><Text style={s.h2}>Discovery</Text><Text style={s.body}>{error || "Loading discovery settings…"}</Text>{!!error && <Button label="Retry" onPress={()=>void refresh()}/>}</View>;
+  return <View style={{gap:20}}>{!!error && <Text style={s.error}>{error}</Text>}<Discovery {...data} refresh={refresh}/></View>;
 }
 function Discovery({
   config,
