@@ -1,7 +1,7 @@
 import React from 'react';
 import {View,Text,Image,Pressable,Linking,useWindowDimensions} from 'react-native';
-export default function BusinessWebsite({site,preview=false}:{site:any;preview?:boolean}){
- const {width}=useWindowDimensions();const mobile=width<720;const {business:b,content:c,design:d,brief}=site;
+export default function BusinessWebsite({site,preview=false,viewportWidth}:{site:any;preview?:boolean;viewportWidth?:number}){
+ const {width}=useWindowDimensions();const mobile=(viewportWidth||width)<720;const {business:b,content:c,design:d,brief}=site;
  const ink=d.ink,accent=d.accent,bg=d.background;const call=()=>void Linking.openURL(`tel:${b.phone}`);
  const button=(label:string,fn:()=>void,outline=false)=><Pressable accessibilityRole="button" onPress={fn} style={{paddingVertical:16,paddingHorizontal:24,borderRadius:d.cornerRadius,backgroundColor:outline?'transparent':accent,borderWidth:1,borderColor:accent,alignSelf:'flex-start'}}><Text style={{color:outline?ink:'#fff',fontWeight:'700',fontSize:15}}>{label}</Text></Pressable>;
  return <View style={{backgroundColor:bg,minHeight:800}}>
