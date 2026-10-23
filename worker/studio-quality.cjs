@@ -1,16 +1,17 @@
 const fs=require('node:fs/promises'),path=require('node:path'),http=require('node:http');
-const {chromium}=require('playwright');
+const {chromium}=require(process.env.STUDIO_HOSTED==='true'?'playwright-core':'playwright');
 const {publicUrl,readPublic}=require('./browser.cjs');
 async function publicURL(raw){try{if(new URL(raw).protocol!=='https:')return false;await publicUrl(raw);return true;}catch{return false;}}
-async function openBrowser(){return chromium.launch({headless:true});}
+function hostedBrowserArgs(args){return args.filter(arg=>arg!=='--single-process');}
+async function openBrowser(){if(process.env.STUDIO_HOSTED==='true'){const module=require('@sparticuz/chromium'),binary=module.default||module;await module.inflate(path.join(path.dirname(require.resolve('@sparticuz/chromium')),'../bin/al2023.tar.br'));module.setupLambdaEnvironment(path.join(require('node:os').tmpdir(),'al2023/lib'));return chromium.launch({headless:true,args:hostedBrowserArgs(binary.args),executablePath:await binary.executablePath()});}return chromium.launch({headless:true});}
 async function references(browser,examples,dir){
  const result=[];const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block',acceptDownloads:false});
- let requests=0,bytes=0;
+ context.setDefaultTimeout(15000);let requests=0,bytes=0;
  await context.route('**/*',async route=>{try{if(++requests>1250||bytes>150000000||route.request().method()!=='GET')return await route.abort();const response=await readPublic(route.request().url());bytes+=response.body.length;await route.fulfill(response);}catch{await route.abort();}});
  await context.routeWebSocket('**/*',ws=>ws.close());
  for(let i=0;i<examples.length;i++){
   const page=await context.newPage(),entry={websiteUrl:examples[i].websiteUrl,observed:false};
-  try{await page.goto(entry.websiteUrl,{waitUntil:'domcontentloaded',timeout:35000});await page.waitForTimeout(2500);entry.title=await page.title();entry.text=(await page.locator('body').innerText()).slice(0,22000);entry.observed=entry.text.length>250&&!/just a moment|verify you are human|access denied/i.test(entry.title);if(entry.observed){entry.screenshot=path.join(dir,`competitor-${i+1}.png`);await page.screenshot({path:entry.screenshot,fullPage:false});}}catch(e){entry.error=e.message.slice(0,200);}finally{await page.close();}
+  try{await page.goto(entry.websiteUrl,{waitUntil:'domcontentloaded',timeout:35000});await page.waitForTimeout(2500);entry.title=await page.title();entry.text=(await page.locator('body').innerText()).slice(0,22000);entry.observed=entry.text.length>250&&!/just a moment|verify you are human|access denied/i.test(entry.title);if(entry.observed){entry.screenshot=path.join(dir,`competitor-${i+1}.png`);await page.screenshot({path:entry.screenshot,fullPage:false,timeout:20000});}}catch(e){entry.error=e.message.slice(0,200);entry.observed=false;delete entry.screenshot;}finally{await page.close();}
   result.push(entry);
  }
  await context.close();await fs.writeFile(path.join(dir,'competitors.json'),JSON.stringify(result,null,2));return result;
@@ -29,15 +30,15 @@ async function capture(browser,site,dir,label='candidate'){
   const faq=page.getByRole('button',{expanded:false}).first();let faqPassed=true;if(await faq.count()){await faq.click();faqPassed=await faq.getAttribute('aria-expanded')==='true';}
   const contact=page.locator('#contact');let contactPassed=await contact.count()>0;
   const primary=page.getByRole('button',{name:site.content.cta+' ↗',exact:true}).first();
-  if(await primary.count()){await primary.click();await page.waitForTimeout(700);contactPassed=contactPassed&&await contact.evaluate(el=>{const r=el.getBoundingClientRect();return r.top<window.innerHeight&&r.bottom>0;});}else contactPassed=false;
+  if(await primary.count()){await primary.click();try{await page.waitForFunction(()=>{const el=document.getElementById('contact');if(!el)return false;const r=el.getBoundingClientRect();return r.top<window.innerHeight&&r.bottom>0;},null,{timeout:5000});}catch{contactPassed=false;}}else contactPassed=false;
   const missingSections=(site.blueprint?.sections||[]).filter(s=>!measured.sections.includes(s.id)).map(s=>s.id);
   await page.locator('#hero').evaluate(el=>el.scrollIntoView());
   // Expand scroll ancestors only for a full-length artifact, after measuring real viewport layout.
   await page.evaluate(()=>{let el=document.getElementById('site-content')?.parentElement;while(el){el.style.overflow='visible';el.style.height='auto';el.style.maxHeight='none';el=el.parentElement;}});
-  const screenshot=path.join(dir,`${label}-${name}.png`);await page.screenshot({path:screenshot,fullPage:true});screens.push(screenshot);
+  const screenshot=path.join(dir,`${label}-${name}.png`);await page.screenshot({path:screenshot,fullPage:true,timeout:30000});screens.push(screenshot);
   checks.push({viewport:name,width,brokenImages:measured.brokenImages,overflow:measured.overflow,errors,faqPassed,contactPassed,missingSections,headings:measured.headings,sections:measured.sections,text:measured.text?.slice(0,25000),passed:!errors.length&&!measured.brokenImages&&!measured.overflow&&faqPassed&&contactPassed&&!missingSections.length});await context.close();
  }}finally{await new Promise(r=>server.close(r));}
  const colors={inkWhite:contrast(site.design.ink,'#ffffff'),inkBackground:contrast(site.design.ink,site.design.background),whiteAccent:contrast('#ffffff',site.design.accent),accentBackground:contrast(site.design.accent,site.design.background)};
  const result={passed:checks.every(c=>c.passed)&&Object.values(colors).every(v=>v>=4.5),colors,viewports:checks};await fs.writeFile(path.join(dir,`${label}-checks.json`),JSON.stringify(result,null,2));return {checks:result,screens};
 }
-module.exports={references,capture,openBrowser,contrast,publicURL};
+module.exports={references,capture,openBrowser,contrast,publicURL,hostedBrowserArgs};

@@ -1,6 +1,6 @@
 const { lookup } = require('node:dns/promises');
 const { isIP } = require('node:net');
-const { chromium } = require('playwright');
+const { chromium } = require(process.env.STUDIO_HOSTED==='true'?'playwright-core':'playwright');
 function publicAddress(ip) {
   if (isIP(ip) !== 4) return false; // Deliberately fail closed for IPv6/private mapped addresses.
   const [a,b] = ip.split('.').map(Number);

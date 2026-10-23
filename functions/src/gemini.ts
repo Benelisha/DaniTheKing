@@ -11,12 +11,13 @@ export async function gemini(
   prompt: string,
   config: Awaited<ReturnType<typeof managedSettings>>,
   mode: "research" | "text" | "image" = "text",
+  additionalParts: {inlineData:{mimeType:string;data:string}}[] = [],
 ) {
   const key = geminiKey.value();
   if (!key) throw Error("Gemini key is not configured");
   const model = mode === "image" ? config.imageModel : config.textModel;
   const body = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    contents: [{ role: "user", parts: [{ text: prompt }, ...additionalParts] }],
     systemInstruction: {
       parts: [
         {

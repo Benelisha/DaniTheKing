@@ -44,8 +44,13 @@ export function validateStage(stage:string,draft:any){
 
 export function alignBlueprintSources(blueprint:z.infer<typeof blueprintSchema>,examples:z.infer<typeof examplesSchema>){
  const host=(url:string)=>new URL(url).hostname.toLowerCase().replace(/^www\./,'');
- const competitors=examples.map(e=>{const matches=blueprint.competitors.filter(c=>host(c.websiteUrl)===host(e.websiteUrl));if(matches.length!==1)throw Error('Blueprint must inspect each selected competitor exactly once.');return {...matches[0],websiteUrl:e.websiteUrl};});
+ const competitors=alignWebsiteRows(blueprint.competitors,examples);
  const allowed=new Set(examples.map(e=>host(e.websiteUrl)));
  for(const section of blueprint.sections)if(section.referenceUrls.some(url=>!allowed.has(host(url))))throw Error('Blueprint section cites an unselected competitor.');
  return {...blueprint,competitors};
+}
+
+export function alignWebsiteRows<T extends {websiteUrl:string}>(rows:T[],examples:{websiteUrl:string}[]):T[]{
+ const host=(url:string)=>new URL(url).hostname.toLowerCase().replace(/^www\./,'');
+ return examples.map(e=>{const matches=rows.filter(c=>host(c.websiteUrl)===host(e.websiteUrl));if(matches.length!==1)throw Error('Research must inspect each selected competitor exactly once.');return {...matches[0],websiteUrl:e.websiteUrl};});
 }

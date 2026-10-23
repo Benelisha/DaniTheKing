@@ -29,6 +29,6 @@ export function matchesLead(lead: Lead, query: string) {
   const presence=onlinePresence(lead);
   const platformOnly=presencePlatforms.find(p=>normalize(p).trim()===normalize(query).trim());
   if (platformOnly) return presence.some(p=>p.platform===platformOnly && p.status === 'Found');
-  const text=normalize(JSON.stringify({businessName:lead.businessName,alternateNames:lead.alternateNames,phone:lead.phone,service:lead.service,location:lead.location,profile:lead.profile,researchNotes:lead.researchNotes,sources:lead.sources,evidence:lead.evidence,presence}));
+  const text=normalize(JSON.stringify({businessName:lead.businessName,generatedWebsiteUrl:lead.generatedWebsiteUrl,alternateNames:lead.alternateNames,phone:lead.phone,service:lead.service,location:lead.location,profile:lead.profile,researchNotes:lead.researchNotes,sources:lead.sources,evidence:lead.evidence,presence}));
   return normalize(query).trim().split(/\s+/).every(term=>text.includes(term));
 }

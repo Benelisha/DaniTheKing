@@ -113,3 +113,11 @@ The workflow is prepared locally; cloud identity configuration and a successful 
 ## Current discovery policy
 
 Automated provider discovery is disabled regardless of stored settings or keys. Only manually verified Google Maps businesses appear in the working list. Older provider-setup documentation describes a retained integration, not the active research workflow. See [generation and verification setup](docs/GENERATION.md).
+
+### Hosted Website Studio
+
+Website Studio design and Compare & improve run in the `studioTask` Firebase task queue in `us-central1`, using the existing Secret Manager `GEMINI_API_KEY` and configured Gemini text model. They do not use a user's Codex login, laptop, or local worker. Chromium renders the bundled production website on desktop and mobile; screenshots and observed competitor pages inform the model, and browser checks still gate publishing.
+
+Jobs are committed to Firestore before dispatch. `recoverStudioJobs` retries undispatched/interrupted jobs every five minutes, with leases fencing stale results and a five-attempt interruption limit. Model/browser failures are saved for review and manual retry. Closing the studio does not interrupt hosted design/review jobs. Earlier research/content steps remain API requests and the UI asks users to keep the studio open for those requests.
+
+Firebase predeploy builds and packages the shared renderer and worker into the ignored `functions/studio-runtime` directory. No credentials are packaged. `npm run worker:studio` and its installer are retired. Remove an existing macOS agent with `launchctl bootout gui/$(id -u)/dev.benlish.daniboy.website-studio`.

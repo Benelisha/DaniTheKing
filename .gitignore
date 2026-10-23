@@ -27,3 +27,5 @@ application_default_credentials.json
 
 websites/dist/
 websites/.expo/
+
+functions/studio-runtime/

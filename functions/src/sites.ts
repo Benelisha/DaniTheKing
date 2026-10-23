@@ -7,6 +7,7 @@ import {gemini,managedSettings,parseJson} from './gemini';
 import {studioAssets} from './studio-assets';
 import {getStorage} from 'firebase-admin/storage';
 import {studioSchema,stageSchema,examplesSchema,analysisSchema,briefSchema,contentSchema,shortSiteId,blueprintSchema,alignBlueprintSources,validateStage} from './studio-domain';
+import {enqueueStudio} from './studio-task';
 const idSchema=z.string().regex(/^[a-f0-9]{32}$/);
 const now=()=>new Date().toISOString();
 const stopped=new Set(['completed','failed','cancelled']);
@@ -43,7 +44,7 @@ export class SitesController{
     validateStage(stage,current.draft);
     const jobId=randomUUID(),ref=db().doc(`siteJobs/${jobId}`);
     await db().runTransaction(async tx=>{const s=await tx.get(db().doc(`websiteStudios/${id}`));if((s.data()?.revision||0)!==revision)throw new HttpException('Studio changed',409);const old=s.data()?.jobId?await tx.get(db().doc(`siteJobs/${s.data()!.jobId}`)):null;if(old?.exists&&!stopped.has(old.data()!.status))throw new HttpException('A step is already running',409);tx.create(ref,{leadId:id,stage,status:['design','review'].includes(stage)?'queued':'running',revision,createdAt:now(),updatedAt:now(),actor:req.actor});tx.set(db().doc(`websiteStudios/${id}`),{...s.data(),revision,draft:current.draft,jobId});});
-    if(stage==='design'||stage==='review')return this.read(id);
+    if(stage==='design'||stage==='review'){try{await enqueueStudio(jobId);}catch{await ref.update({dispatchError:'Waiting for automatic queue recovery'});}return this.read(id);}
     try{
       const config=await managedSettings();const schema={examples:examplesSchema,analysis:analysisSchema,blueprint:blueprintSchema,brief:briefSchema,content:contentSchema}[stage];
       const request={examples:'Find exactly five real competitor business websites. Prefer the same area and service; expand location if needed. Inspect sites and record specific factual notes. Do not invent sources.',analysis:'Inspect each of the five selected websites. Give exactly five concrete good points and five concrete bad points for EACH website, based on visible design/content/UX. Preserve the selected website URLs and order.',blueprint:'Inspect all five competitor websites. Replace a generic pros/cons list with an actionable ordered UX blueprint: map their real navigation, service details, process, testimonials, galleries, FAQs, coverage and contact journeys to reusable section requirements. Cite the source URLs per section. Mark inaccessible sites honestly. Include at least services, reviews, process or FAQ, areas, and contact. Plan a complete premium website, not a sparse landing page. Review content must come from this business only; never transfer competitor claims. The hero and navigation render automatically, so do not plan another hero section. Order the sections into a coherent visitor journey, ending with contact. Borrow UX patterns only: never promise free quotes, prices, guarantees, credentials, operational policies or neighborhoods not supplied for THIS business. Forms, ZIP checkers, customer portals and automated messages are not connected in this phase; use working phone/email contact paths. Gallery imagery without real project photos must be labelled inspiration, not our work.',brief:'Write an actionable website design brief based on this business and the reviewed competitor UX blueprint. Preserve every planned section.',content:'Write original website copy using only supplied business facts. No invented ratings, testimonials, staff, credentials, prices or guarantees. Implement EVERY blueprint section in order using the same id/kind. Write detailed original copy, useful FAQs, a clear inquiry process, service-area information and real contact details. Services must stay within the supplied offering. Reviews are rendered directly from supplied business reviews; do not rewrite or invent them. Each section needs eyebrow/title/body/items/imageIndex (0 hero, 1 service detail, null for none). Image assets are attached by the server; use https://example.com/placeholder for the required imageUrl. Do not claim unconfirmed warranties, coverage, packages, experience or credentials.'}[stage];
@@ -90,7 +91,7 @@ export class SitesController{
       tx.create(ref.collection('history').doc(),{action:'publish',actor:req.actor,at:now(),revision});
     });return this.read(id);
   }
-  @Get('worker') async worker(){const s=(await db().doc('internal/expoWorker').get()).data();return {online:!!s&&s.heartbeatAt>Date.now()-90000,ready:!!s?.ready};}
+  @Get('worker') async worker(){return {mode:'hosted',status:'on-demand'};}
 }
 @Controller('api/public/sites')
 export class PublicSitesController{

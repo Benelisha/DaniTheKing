@@ -50,3 +50,18 @@ export const recoverManagedJobs=onSchedule({schedule:"every 5 minutes",region:"u
  const jobs=await db().collection('managedJobs').where('status','in',['queued','running']).limit(50).get();
  for(const job of jobs.docs)if((job.data().leaseUntil||0)<Date.now())await enqueueManaged(job.id);
 });
+
+// Cloud Tasks owns execution: closing the UI or sleeping a laptop has no effect.
+export const studioTask=onTaskDispatched({region:'us-central1',timeoutSeconds:1800,memory:'2GiB',maxInstances:1,concurrency:1,secrets:[geminiKey],retryConfig:{maxAttempts:5,minBackoffSeconds:60,maxBackoffSeconds:300},rateLimits:{maxConcurrentDispatches:1}},async request=>{
+ const id=request.data?.id;if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))throw Error('Invalid studio job ID');
+ const {processStudio}=await import('./studio-task');await processStudio(id);
+});
+export const recoverStudioJobs=onSchedule({schedule:'every 5 minutes',region:'us-central1',timeoutSeconds:120},async()=>{
+ const {db}=await import('./store');const {enqueueStudio}=await import('./studio-task');
+ const lock=(await db().doc('internal/studioWorkerLock').get()).data();
+ const jobs=await db().collection('siteJobs').where('status','in',['queued','running','building']).get();
+ for(const job of jobs.docs)if(['design','review'].includes(job.data().stage)&&!(lock?.jobId===job.id&&lock.until>Date.now())){
+  if((job.data().attempts||0)>=5)await job.ref.update({status:'failed',error:'Hosted worker was interrupted repeatedly. Please retry this step.',updatedAt:new Date().toISOString()});
+  else await enqueueStudio(job.id);
+ }
+});
