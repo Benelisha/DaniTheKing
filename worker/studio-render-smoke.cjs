@@ -17,8 +17,13 @@ async function main(){
   site.design={...site.design,...bindPalette({...site.design,accent:'#174ba8',background:'#fafafa',ink:'#101828',surface:'#ffffff',onAccent:'#ffffff',onInk:'#ffffff'},[{websiteUrl:'https://competitor.example',observed:true,visualEvidence:evidence}])};
   await context.close();
   for(const style of ['editorial','bold','minimal']){
-  site.design.visualStyle=style;site.design.serviceLayout=style==='minimal'?'list':'cards';site.design.imageShape=style==='editorial'?'arch':'rounded';site.design.heroLayout=style==='minimal'?'centered':'split';
+  site.design.fontStyle=style==='editorial'?'editorial':'modern';site.design.visualStyle=style;site.design.serviceLayout=style==='minimal'?'list':'cards';site.design.imageShape=style==='editorial'?'arch':'rounded';site.design.heroLayout=style==='minimal'?'centered':'split';
   const result=await capture(browser,site,dir,style);assert.equal(result.checks.passed,true,JSON.stringify(result.checks));console.log(`${style}: desktop/mobile layout, images, FAQ, CTA, service selection and contrast passed`);
- }}finally{await browser.close();}
+ }
+  site.content.headline='Thoughtful garden care and maintenance for your Bristol home.';
+  site.content.intro='Field & Form offers garden care in Bristol. Tell us about your outdoor space, the planting you want to maintain and the tasks you have in mind. Contact us to discuss your garden and ask about availability.';
+  site.design.visualStyle='bold';site.design.fontStyle='modern';
+  for(const layout of ['split','centered']){site.design.heroLayout=layout;const result=await capture(browser,site,dir,'long-copy-'+layout);assert.equal(result.checks.passed,true,JSON.stringify(result.checks));console.log(`Long modern hero (${layout}): desktop/mobile inquiry buttons remain clickable`);}
+ }finally{await browser.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
