@@ -432,18 +432,7 @@ function LeadDetail({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [saved, setSaved] = useState(""),
-    [confirmRemove, setConfirmRemove] = useState(false),
-    [history, setHistory] = useState<any[]>([]);
-  const loadHistory = useCallback(
-    () =>
-      api(`/leads/${lead.id}/activity`)
-        .then(setHistory)
-        .catch((e) => setError(e.message)),
-    [lead.id, lead.version],
-  );
-  useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
+    [confirmRemove, setConfirmRemove] = useState(false);
   useEffect(() => setStatus(lead.callStatus), [lead.callStatus]);
   async function save(nextStatus = status) {
     if (busy) return;
@@ -459,7 +448,6 @@ function LeadDetail({
       setNote("");
       onStatusSaved(lead.id, nextStatus, result.version);
       setSaved("Saved to Firestore.");
-      await loadHistory();
     } catch (e) {
       setStatus(lead.callStatus);
       setError((e as Error).message);
@@ -479,6 +467,11 @@ function LeadDetail({
         <Text style={s.h1}>{lead.businessName}</Text>
         <Text style={s.body}>{lead.service} · {lead.profile?.address || lead.location}</Text>
         <VerificationBadge lead={lead} />
+        {!!lead.profile?.staff?.length && <View style={{gap:6}}>
+          {lead.profile.staff.map((person, i) => <Text key={`${person.name}:${i}`} style={s.body}>
+            {person.name}{person.role ? ` · ${person.role}` : ""}
+          </Text>)}
+        </View>}
         <View style={[s.row, {flexWrap:"wrap",gap:16}]}>
           <ExternalLink url={mapsUrl(lead)} label="Google Maps" />
           {!!lead.websiteUrl && <ExternalLink url={lead.websiteUrl} label="Website" />}
@@ -488,19 +481,6 @@ function LeadDetail({
         <SocialLinks lead={lead} />
         <Button label={lead.callStatus === "Do not call" ? "Do not call — contact suppressed" : "Call business"} icon="phone" disabled={lead.callStatus === "Do not call"} onPress={() => void Linking.openURL(`tel:${lead.phone}`)} />
         {!!lead.potentialDuplicateId && <Text style={s.error}>Possible duplicate — review before calling.</Text>}
-      </View>
-      <View style={{gap:8}}>
-        <Button subtle label="Remove lead" disabled={busy} onPress={()=>setConfirmRemove(true)} />
-        {confirmRemove && <View style={{gap:8}}>
-          <Text style={s.body}>Remove {lead.businessName} from the leads list? Its history will be preserved.</Text>
-          <Button label={busy ? "Removing…" : "Confirm removal"} disabled={busy} onPress={()=>void (async()=>{
-            setBusy(true);setError("");
-            try {await api(`/leads/${lead.id}`,"DELETE",{expectedVersion:lead.version});await refresh();close();}
-            catch(e){setError((e as Error).message);}finally{setBusy(false);}
-          })()} />
-          <Button subtle label="Cancel" disabled={busy} onPress={()=>setConfirmRemove(false)} />
-        </View>}
-        {!!error && <Text style={s.error}>{error}</Text>}
       </View>
       <ReviewAssets lead={lead} />
       <View style={s.section}>
@@ -525,9 +505,6 @@ function LeadDetail({
         </DetailSection>
       </View>
       <ContentEditor key={`${lead.id}:${lead.version}`} lead={lead} refresh={refresh} />
-      <DetailSection title="Generated website">
-        <WebsiteStudioButton lead={lead} refresh={refresh} />
-      </DetailSection>
       <DetailSection title={`Business examples · ${lead.competitors?.length || 0}`}>
         {lead.competitors?.map((competitor, i) => <View key={i} style={{gap:6}}>
           <Text style={s.h2}>{competitor.businessName}</Text>
@@ -535,47 +512,19 @@ function LeadDetail({
           <Text style={s.body}>{competitor.verificationNotes}</Text>
         </View>)}
       </DetailSection>
-      <DetailSection title="Research & business details">
-        <Badge text={lead.websiteStatus} />
-        {!!lead.researchNotes && <Text style={s.body}>{lead.researchNotes}</Text>}
-        {!!lead.profile?.addressNotes && <Text style={s.body}>{lead.profile.addressNotes}</Text>}
-        {!!lead.profile?.openingHours && <Text style={s.body}>{lead.profile.openingHours}</Text>}
-        {!!lead.profile?.services?.length && <Text style={s.body}>{lead.profile.services.join(", ")}</Text>}
-        {lead.evidence.map((e,i)=><Text key={i} style={s.body}>{e.summary}</Text>)}
-      </DetailSection>
-      <ResearchEditor lead={lead} refresh={refresh} />
-      <DetailSection title="Sources">
-        {lead.sources.filter(source => !/google\.[^/]+\/maps|maps\.google\./i.test(source.url)).map((source, i) => (
-          <View key={i} style={{ gap: 4 }}>
-            <ExternalLink url={source.url} label={source.title || source.url} />
-            <Text style={s.body}>
-              Observed{" "}
-              {new Date(source.observedAt).toLocaleDateString(undefined, {
-                timeZone: "UTC",
-              })}
-            </Text>
-          </View>
-        ))}
-      </DetailSection>
-      <DetailSection title={`Call history · ${history.length}`}>
-        {history.length ? (
-          history.map((h) => (
-            <View key={h.id} style={{ gap: 6, paddingVertical: 10 }}>
-              <Text
-                style={{ fontSize: 12, fontWeight: "600", color: colors.ink }}
-              >
-                {h.toStatus} · {h.actor}
-              </Text>
-              {!!h.note && <Text style={s.body}>{h.note}</Text>}
-              <Text style={{ fontSize: 11, color: colors.muted }}>
-                {new Date(h.at).toLocaleString()}
-              </Text>
-            </View>
-          ))
-        ) : (
-          <Text style={s.body}>No calls logged yet.</Text>
-        )}
-      </DetailSection>
+      <View style={{gap:8}}>
+        <Button danger label="Remove lead" disabled={busy} onPress={()=>setConfirmRemove(true)} />
+        {confirmRemove && <View style={{gap:8}}>
+          <Text style={s.body}>Remove {lead.businessName} from the leads list? Its history will be preserved.</Text>
+          <Button danger label={busy ? "Removing…" : "Confirm removal"} disabled={busy} onPress={()=>void (async()=>{
+            setBusy(true);setError("");
+            try {await api(`/leads/${lead.id}`,"DELETE",{expectedVersion:lead.version});await refresh();close();}
+            catch(e){setError((e as Error).message);}finally{setBusy(false);}
+          })()} />
+          <Button subtle label="Cancel" disabled={busy} onPress={()=>setConfirmRemove(false)} />
+        </View>}
+        {!!error && <Text style={s.error}>{error}</Text>}
+      </View>
     </ScrollView>
   );
 }
@@ -592,13 +541,6 @@ function DetailSection({title,children}:{title:string;children:React.ReactNode})
 function ReviewAssets({lead}:{lead:Lead}) {
   const profile=lead.profile;
   return <View style={{gap:12}}>
-    {!!profile?.staff?.length && <View style={{gap:8}}>
-      <Text style={s.h2}>People mentioned in reviews</Text>
-      {profile.staff.map((person,i)=><View key={i} style={{gap:3}}>
-        <ExternalLink url={person.sourceUrl} label={`${person.name}${person.role ? ` · ${person.role}` : ""}`} />
-        <Text style={s.body}>{person.excerpt}</Text>
-      </View>)}
-    </View>}
     {!!profile?.images?.length && <View style={{gap:8}}>
       <Text style={s.h2}>Photos · {profile.images.length}</Text>
       <ScrollView horizontal contentContainerStyle={{gap:10}}>
