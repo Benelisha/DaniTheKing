@@ -10,6 +10,9 @@ import {
   Modal,
   ScrollView,
 } from "react-native";
+import type { Lead } from "./types";
+import { onlinePresence, socialPlatforms } from "./presence";
+import brandGlyphs from "@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/FontAwesome6Free.json";
 import createIconSet from "@expo/vector-icons/createIconSet";
 import glyphMap from "@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Feather.json";
 const Feather = createIconSet(glyphMap, "daniboy-feather", require("../assets/Feather.ttf"));
@@ -287,3 +290,24 @@ export const s = StyleSheet.create({
     borderTopColor: colors.line,
   },
 });
+
+const Brands = createIconSet(brandGlyphs, "daniboy-brands", require("../assets/FontAwesome6_Brands.ttf"));
+const socialIcons = {
+  Instagram: {name:"instagram",color:"#E4405F"}, Facebook:{name:"facebook",color:"#1877F2"},
+  LinkedIn:{name:"linkedin",color:"#0A66C2"}, TikTok:{name:"tiktok",color:"#111111"},
+  YouTube:{name:"youtube",color:"#FF0000"}, X:{name:"x-twitter",color:"#111111"},
+  Nextdoor:{name:"square-letterboxd",color:"#15803D"}, Yelp:{name:"yelp",color:"#D32323"},
+} as const;
+export function SocialLinks({lead}:{lead:Lead}) {
+  const presence = onlinePresence(lead);
+  return <View style={{flexDirection:"row", flexWrap:"wrap", gap:8}}>
+    {socialPlatforms.map(platform=>{
+      const entry=presence.find(p=>p.platform===platform)!;
+      const found=entry.status === "Found" && !!entry.url;
+      const icon=socialIcons[platform];
+      return <Pressable key={platform} accessibilityRole={found ? "link" : "image"} accessibilityLabel={`${platform} · ${entry.status}`} disabled={!found} onPress={event=>{event.stopPropagation();void Linking.openURL(entry.url!);}} style={{padding:8,opacity:found?1:0.25}}>
+        {platform === "Nextdoor" ? <Icon name="home" size={22} color={icon.color} /> : <Brands name={icon.name} size={22} color={icon.color} />}
+      </Pressable>;
+    })}
+  </View>;
+}

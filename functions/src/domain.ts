@@ -101,6 +101,7 @@ export const profileSchema = z.object({
   openingHours: z.string().max(2000).optional(),
   services: z.array(z.string().max(200)).max(40).optional(),
   images: z.array(z.object({ url: httpUrl, sourceUrl: httpUrl, caption: z.string().max(500) }).strict()).max(10).optional(),
+  staff: z.array(z.object({ name: z.string().trim().min(1).max(200), role: z.string().max(200).optional(), excerpt: z.string().trim().min(1).max(1000), sourceUrl: httpUrl }).strict()).max(20).optional(),
   reviews: z.array(z.object({ text: z.string().max(3000), rating: z.number().min(0).max(5).optional(), author: z.string().max(200), sourceUrl: httpUrl, publishedAt: z.string().max(100).optional() }).strict()).max(10).optional(),
   sourceUrl: httpUrl,
   observedAt: z.iso.datetime(),

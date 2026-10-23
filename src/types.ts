@@ -29,6 +29,7 @@ export type Lead = {
     onlinePresence?: { platform: string; status: "Found" | "Not found" | "Not checked"; url?: string; sourceUrl: string; checkedAt: string; notes?: string }[];
     services?: string[];
     images?: { url: string; sourceUrl: string; caption: string }[];
+    staff?: { name: string; role?: string; excerpt: string; sourceUrl: string }[];
     reviews?: { text: string; rating?: number; author: string; sourceUrl: string; publishedAt?: string }[];
     sourceUrl: string; observedAt: string;
   };

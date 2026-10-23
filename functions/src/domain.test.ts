@@ -147,3 +147,13 @@ test("Social findings require dated provenance, real platform URLs and honest ne
   assert.equal(onlinePresenceSchema.safeParse({...base,checkedAt:undefined}).success,false);
   assert.equal(profileSchema.safeParse({sourceUrl:base.sourceUrl,observedAt:base.checkedAt,onlinePresence:[base,base]}).success,false);
 });
+
+
+test("Review enrichment is optional and staff mentions require excerpts and safe sources", () => {
+  const base = {sourceUrl:"https://example.com/reviews", observedAt:"2026-10-22T18:00:00Z"};
+  const person = {name:"Alex",excerpt:"Alex, the technician, repaired our pool pump.",sourceUrl:base.sourceUrl};
+  assert.equal(profileSchema.safeParse(base).success, true);
+  assert.equal(profileSchema.safeParse({...base,staff:[person],images:[{url:"https://example.com/photo.jpg",sourceUrl:base.sourceUrl,caption:"Review photo"}],reviews:[{text:person.excerpt,author:"Customer",sourceUrl:base.sourceUrl}]}).success, true);
+  for (const patch of [{name:""},{excerpt:""},{sourceUrl:"javascript:alert(1)"}]) assert.equal(profileSchema.safeParse({...base,staff:[{...person,...patch}]}).success, false);
+  assert.equal(profileSchema.safeParse({...base,staff:Array(21).fill(person)}).success, false);
+});

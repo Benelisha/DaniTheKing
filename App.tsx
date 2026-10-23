@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   useWindowDimensions,
   ActivityIndicator,
+  Image,
   Modal,
   Switch,
   Linking,
@@ -22,6 +23,7 @@ import {
   Field,
   FilterSelect,
   Icon,
+  SocialLinks,
   s,
   colors,
 } from "./src/ui";
@@ -33,7 +35,7 @@ import {
   websiteStatuses,
 } from "./src/types";
 import { onlinePresence, matchesLead, socialPlatforms, presencePlatforms } from "./src/presence";
-import {GenerationControls, GoogleVerification, WorkerStatus} from "./src/Generation";
+import {GenerationControls} from "./src/Generation";
 function mapsUrl(lead: Lead) {
   return (lead.googleVerified ? lead.googleVerification?.listingUrl : undefined) || lead.profile?.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([lead.businessName, lead.profile?.address || lead.location, lead.phone].join(" "))}`;
 }
@@ -91,7 +93,6 @@ function Workspace() {
     [error, setError] = useState(""),
     [sort, setSort] = useState("Newest first"),
     [query, setQuery] = useState(""),
-    [verificationView,setVerificationView] = useState("Verified Google businesses"),
     [platformFilter, setPlatformFilter] = useState("All platforms"),
     [presenceFilter, setPresenceFilter] = useState("All findings"),
     [selectedId, setSelectedId] = useState<string | null>(leadIdFromPath);
@@ -148,7 +149,7 @@ function Workspace() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  const sortedLeads = leads.filter(l => (verificationView === "Needs verification" ? !l.googleVerified : !!l.googleVerified) && matchesLead(l, query) && onlinePresence(l).some(p => (platformFilter === "All platforms" || p.platform === platformFilter) && (presenceFilter === "All findings" || p.status === presenceFilter))).sort((a, b) => sort === "Business A–Z"
+  const sortedLeads = leads.filter(l => matchesLead(l, query) && onlinePresence(l).some(p => (platformFilter === "All platforms" || p.platform === platformFilter) && (presenceFilter === "All findings" || p.status === presenceFilter))).sort((a, b) => sort === "Business A–Z"
     ? a.businessName.localeCompare(b.businessName)
     : sort === "Fewest examples" ? (a.competitors?.length || 0) - (b.competitors?.length || 0)
     : (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -199,9 +200,7 @@ function Workspace() {
               {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
               <View style={[s.card, { padding: 0, gap: 0, overflow: "hidden" }]}>
                 <View style={{ padding: 20, gap: 12 }}>
-                  <Text style={s.h2}>Lead directory · {sortedLeads.length} of {leads.length}</Text>
-                  <Choices values={["Verified Google businesses","Needs verification"]} value={verificationView} onChange={setVerificationView}/>
-                  <WorkerStatus/>
+
                   <Field placeholder="Search name, address, phone, Instagram, Facebook, websites…" value={query} onChangeText={setQuery} />
                   <View style={[s.row, {flexWrap:"wrap",gap:12}]}>
                     <View style={{flex:1,minWidth:180}}><FilterSelect label="Platform" values={["All platforms", ...presencePlatforms]} value={platformFilter} onChange={setPlatformFilter} /></View>
@@ -292,10 +291,9 @@ function Workspace() {
                           <Text style={{ fontSize: 12, color: colors.muted }}>
                             {l.service}
                           </Text>
-                          {l.googleVerified && <ExternalLink url={l.googleVerification!.listingUrl} label="Google Maps"/>}
+                          <VerificationBadge lead={l} />
                           <Text style={{ fontSize: 11, color: colors.muted }}>{l.competitors?.length || 0}/5 business examples{l.potentialDuplicateId ? " · Duplicate review" : ""}</Text>
-                          <Text style={{fontSize:11,color:colors.green}}>Found on: {onlinePresence(l).filter(p=>p.status === "Found").map(p=>p.links?.map(link=>link.label).join(" · ") || p.platform).join(" · ") || "No platforms recorded"}</Text>
-                          <Text style={{fontSize:11,color:colors.muted}}>Instagram: {onlinePresence(l).find(p=>p.platform === "Instagram")?.status}</Text>
+                          <SocialLinks lead={l} />
                         </View>
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
@@ -404,8 +402,6 @@ function LeadDetail({
   refresh: () => Promise<void>;
   onStatusSaved: (id: string, status: string, version: number) => void;
 }) {
-  const detailScroll = useRef<ScrollView>(null);
-  const [examplesY, setExamplesY] = useState(0);
   const [status, setStatus] = useState(lead.callStatus),
     [note, setNote] = useState(""),
     [busy, setBusy] = useState(false),
@@ -446,77 +442,34 @@ function LeadDetail({
     }
   }
   return (
-    <ScrollView ref={detailScroll} contentContainerStyle={{ padding: 28, gap: 18 }}>
+    <ScrollView contentContainerStyle={{ padding: 24, gap: 16 }}>
       <View style={[s.row, { justifyContent: "space-between" }]}>
         <Text style={{ fontSize: 11, letterSpacing: 2, color: colors.green }}>
           BUSINESS PROFILE
         </Text>
-        <Button subtle label="Close" icon="x" onPress={close} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Close lead details" onPress={close} style={{padding:10}}><Icon name="x" size={22} /></Pressable>
       </View>
-      <Text style={s.h1}>{lead.businessName}</Text>
+      <View style={{gap:8}}>
+        <Text style={s.h1}>{lead.businessName}</Text>
+        <Text style={s.body}>{lead.service} · {lead.profile?.address || lead.location}</Text>
+        <VerificationBadge lead={lead} />
+        <View style={[s.row, {flexWrap:"wrap",gap:16}]}>
+          <ExternalLink url={mapsUrl(lead)} label="Google Maps" />
+          {!!lead.websiteUrl && <ExternalLink url={lead.websiteUrl} label="Website" />}
+          {!!lead.profile?.publicEmail && <ExternalLink url={`mailto:${lead.profile.publicEmail}`} label="Email" />}
+          <ExternalLink url={`tel:${lead.phone}`} label={lead.phone} />
+        </View>
+        <SocialLinks lead={lead} />
+        <Button label={lead.callStatus === "Do not call" ? "Do not call — contact suppressed" : "Call business"} icon="phone" disabled={lead.callStatus === "Do not call"} onPress={() => void Linking.openURL(`tel:${lead.phone}`)} />
+        {!!lead.potentialDuplicateId && <Text style={s.error}>Possible duplicate — review before calling.</Text>}
+      </View>
+      <ReviewAssets lead={lead} />
       <View style={s.section}>
-        <Text style={s.h2}>Address & contact</Text>
-        <Text selectable style={s.body}>{lead.profile?.address || `${lead.location} · Street address not publicly collected`}</Text>
-        {!!lead.profile?.addressNotes && <Text style={s.body}>{lead.profile.addressNotes}</Text>}
-        <ExternalLink url={mapsUrl(lead)} label={lead.profile?.googleMapsLinkType === "listing" ? "Open Google Maps listing" : "Search this business on Google Maps"} />
-        <ExternalLink url={`tel:${lead.phone}`} label={lead.phone} />
-        {!!lead.profile?.publicEmail && <ExternalLink url={`mailto:${lead.profile.publicEmail}`} label={lead.profile.publicEmail} />}
-        {!!lead.profile?.sourceUrl && <ExternalLink url={lead.profile.sourceUrl} label="Business details source" />}
-      </View>
-      <Button subtle label={`View business examples · ${lead.competitors?.length || 0}/5`} icon="external-link" onPress={() => detailScroll.current?.scrollTo({y: examplesY, animated:true})} />
-      <View style={s.section}>
-        <Text style={s.h2}>Online presence · socials & websites</Text>
-        {onlinePresence(lead).map(p => <View key={p.platform} style={{gap:4,paddingVertical:6}}>
-          {p.status === "Found" && (p.links?.length || p.url)
-            ? (p.links?.length ? p.links : [{url:p.url!,label:p.platform}]).map(link =>
-                <ExternalLink key={link.url} url={link.url} label={`${p.platform} · ${link.url}`} />)
-            : <Text style={{fontWeight:"600",color:colors.ink}}>{p.platform} · {p.status}</Text>}
-        </View>)}
-      </View>
-      <GoogleVerification key={`verify:${lead.id}:${lead.version}`} lead={lead} refresh={refresh}/>
-      <ContentEditor key={`${lead.id}:${lead.version}`} lead={lead} refresh={refresh} />
-      <Text style={s.body}>
-        {lead.service} · {lead.location}
-      </Text>
-      {!!lead.alternateNames.length && (
-        <Text style={s.body}>
-          Also listed as: {lead.alternateNames.join(", ")}
-        </Text>
-      )}
-      <Badge text={lead.websiteStatus} />
-      {!!lead.potentialDuplicateId && (
-        <Text style={s.error}>
-          Possible duplicate: same business name and location, different phone.
-          Review before calling.
-        </Text>
-      )}
-      <View style={[s.card, { backgroundColor: colors.bg }]}>
-        <Text style={s.label}>PUBLIC BUSINESS PHONE</Text>
-        <ExternalLink url={mapsUrl(lead)} label={lead.googleVerified ? "Google Maps · verified listing" : "Google Maps · needs verification"}/>
-        <Text style={{ fontSize: 25, fontWeight: "500", color: colors.ink }}>
-          {lead.phone}
-        </Text>
-        <Button
-          label={
-            lead.callStatus === "Do not call"
-              ? "Do not call — contact suppressed"
-              : "Call business"
-          }
-          icon="phone"
-          disabled={lead.callStatus === "Do not call"}
-          onPress={() => void Linking.openURL(`tel:${lead.phone}`)}
-        />
-      </View>
-      <View style={[s.card, { gap: 12 }]}>
-        <Text style={s.h2}>Generated website</Text>
-        <GenerationControls lead={lead} refresh={refresh}/>
-      </View>
-      <View style={s.section}>
-        <Text style={s.h2}>The conversation</Text>
-        <Text style={s.body}>Select a status to save it immediately. Add notes with the button below.</Text>
+        <Text style={s.h2}>Call status</Text>
         <Choices values={callStatuses} value={status} onChange={(next) => { if (!busy) { setStatus(next); void save(next); } }} />
         {busy && <Text accessibilityRole="alert" style={s.body}>Saving to Firestore…</Text>}
         {!!saved && <Text accessibilityRole="alert" style={s.body}>{saved}</Text>}
+        <DetailSection title="Add a call note">
         <Field
           label="Add a call note"
           multiline
@@ -530,85 +483,29 @@ function LeadDetail({
           disabled={busy}
           onPress={() => void save()}
         />
+        </DetailSection>
       </View>
-      <View style={s.section}>
-        <Text style={s.h2}>Website research</Text>
-        <Text style={s.body}>
-          Checked:{" "}
-          {lead.websiteCheckedAt
-            ? new Date(lead.websiteCheckedAt).toLocaleDateString(undefined, {
-                timeZone: "UTC",
-              }) + " (UTC)"
-            : "Not yet checked"}
-        </Text>
-        {!!lead.websiteUrl && <ExternalLink url={lead.websiteUrl} />}
-        <Text style={s.body}>
-          {lead.researchNotes || "No research notes yet."}
-        </Text>
-        {lead.evidence.map((e, i) => (
-          <View
-            key={i}
-            style={{
-              gap: 5,
-              padding: 12,
-              backgroundColor: colors.bg,
-              borderRadius: 7,
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: "600", color: colors.ink }}
-            >
-              {e.query || "Manual check"}
-            </Text>
-            <Text style={s.body}>{e.summary}</Text>
-            {e.url && <ExternalLink url={e.url} />}
-            <Text style={{ fontSize: 10, color: colors.muted }}>
-              {new Date(e.checkedAt).toLocaleDateString(undefined, {
-                timeZone: "UTC",
-              }) + " (UTC)"}
-            </Text>
-          </View>
-        ))}
-      </View>
-      <View style={s.section}>
-        <Text style={s.h2}>Business information</Text>
-        {lead.profile ? <>
-          <Text style={s.body}>{lead.profile.address || "Address not collected"}</Text>
-          <Text style={s.body}>Google rating: {lead.profile.rating ?? "Unknown"} / 5 · {lead.profile.reviewCount ?? "Unknown"} reviews</Text>
-          {!!lead.profile.publicEmail && <ExternalLink url={`mailto:${lead.profile.publicEmail}`} label={lead.profile.publicEmail} />}
-          {!!lead.profile.googleMapsUrl && <ExternalLink url={lead.profile.googleMapsUrl} label={lead.profile.googleMapsLinkType === "listing" ? "Google Maps listing" : "Google Maps business search"} />}
-          <Text style={s.body}>Hours: {lead.profile.openingHours || "Not collected"}</Text>
-          <Text style={s.body}>Services: {lead.profile.services?.join(", ") || "Not collected"}</Text>
-          <ExternalLink url={lead.profile.sourceUrl} label={`Profile source · ${new Date(lead.profile.observedAt).toLocaleDateString()}`} />
-          <Text style={s.label}>Images · {lead.profile.images?.length || 0}</Text>
-          {lead.profile.images?.map((image, i) => <View key={i} style={{ gap: 5 }}>
-            <ExternalLink url={image.url} label={image.caption || `Business image ${i + 1}`} />
-            <ExternalLink url={image.sourceUrl} label="Image source / attribution" />
-          </View>)}
-          <Text style={s.label}>Review excerpts · {lead.profile.reviews?.length || 0}</Text>
-          {lead.profile.reviews?.map((review, i) => <View key={i} style={[s.card, { gap: 6 }]}>
-            <Text style={s.body}>{review.text}</Text>
-            <Text style={s.body}>{review.author} · {review.rating ?? "Unrated"} / 5 · {review.publishedAt || "Date unknown"}</Text>
-            <ExternalLink url={review.sourceUrl} label="Read original review" />
-          </View>)}
-        </> : <Text style={s.body}>No enriched profile collected yet. Import researched details from the research guide.</Text>}
-      </View>
-      <View style={s.section} onLayout={event => setExamplesY(event.nativeEvent.layout.y)}>
-        <Text style={s.h2}>Competitors · {lead.competitors?.length || 0} / 5</Text>
-        <Badge text={lead.competitors?.length === 5 ? "Five competitors recorded" : "Research incomplete"} />
-        <Text style={s.body}>Five distinct businesses serving this job type and area, each with a real independent website and dated verification evidence. Confirm the evidence before using these as references.</Text>
-        {lead.competitors?.map((competitor, i) => <View key={i} style={[s.card, { gap: 6 }]}>
-          <Text style={s.h2}>{i + 1}. {competitor.businessName}</Text>
-          <Text style={s.body}>{competitor.service} · {competitor.location}</Text>
-          <ExternalLink url={competitor.websiteUrl} label="Competitor website" />
+      <ContentEditor key={`${lead.id}:${lead.version}`} lead={lead} refresh={refresh} />
+      <DetailSection title="Generated website">
+        <GenerationControls lead={lead} refresh={refresh}/>
+      </DetailSection>
+      <DetailSection title={`Business examples · ${lead.competitors?.length || 0}`}>
+        {lead.competitors?.map((competitor, i) => <View key={i} style={{gap:6}}>
+          <ExternalLink url={competitor.websiteUrl} label={competitor.businessName} />
           <Text style={s.body}>{competitor.verificationNotes}</Text>
-          <ExternalLink url={competitor.sourceUrl} label={`Verification source · ${new Date(competitor.verifiedAt).toLocaleDateString()}`} />
         </View>)}
-      </View>
+      </DetailSection>
+      <DetailSection title="Research & business details">
+        <Badge text={lead.websiteStatus} />
+        {!!lead.researchNotes && <Text style={s.body}>{lead.researchNotes}</Text>}
+        {!!lead.profile?.addressNotes && <Text style={s.body}>{lead.profile.addressNotes}</Text>}
+        {!!lead.profile?.openingHours && <Text style={s.body}>{lead.profile.openingHours}</Text>}
+        {!!lead.profile?.services?.length && <Text style={s.body}>{lead.profile.services.join(", ")}</Text>}
+        {lead.evidence.map((e,i)=><Text key={i} style={s.body}>{e.summary}</Text>)}
+      </DetailSection>
       <ResearchEditor lead={lead} refresh={refresh} />
-      <View style={s.section}>
-        <Text style={s.h2}>Sources</Text>
-        {lead.sources.map((source, i) => (
+      <DetailSection title="Sources">
+        {lead.sources.filter(source => !/google\.[^/]+\/maps|maps\.google\./i.test(source.url)).map((source, i) => (
           <View key={i} style={{ gap: 4 }}>
             <ExternalLink url={source.url} label={source.title || source.url} />
             <Text style={s.body}>
@@ -619,9 +516,8 @@ function LeadDetail({
             </Text>
           </View>
         ))}
-      </View>
-      <View style={s.section}>
-        <Text style={s.h2}>Call history</Text>
+      </DetailSection>
+      <DetailSection title={`Call history · ${history.length}`}>
         {history.length ? (
           history.map((h) => (
             <View key={h.id} style={{ gap: 6, paddingVertical: 10 }}>
@@ -639,9 +535,43 @@ function LeadDetail({
         ) : (
           <Text style={s.body}>No calls logged yet.</Text>
         )}
-      </View>
+      </DetailSection>
     </ScrollView>
   );
+}
+function VerificationBadge({lead}:{lead:Lead}) {
+  return <View style={[s.row,{gap:5}]}><Icon name={lead.googleVerified ? "check-circle" : "circle"} size={14} color={lead.googleVerified ? colors.green : colors.muted}/><Text style={{fontSize:11,color:lead.googleVerified ? colors.green : colors.muted}}>{lead.googleVerified ? "Verified" : "Unverified"}</Text></View>;
+}
+function DetailSection({title,children}:{title:string;children:React.ReactNode}) {
+  const [open,setOpen]=useState(false);
+  return <View style={s.section}>
+    <Pressable accessibilityRole="button" accessibilityState={{expanded:open}} onPress={()=>setOpen(!open)} style={[s.row,{justifyContent:"space-between",paddingVertical:6}]}><Text style={s.h2}>{title}</Text><Icon name={open?"chevron-up":"chevron-down"}/></Pressable>
+    {open && children}
+  </View>;
+}
+function ReviewAssets({lead}:{lead:Lead}) {
+  const profile=lead.profile;
+  return <View style={{gap:12}}>
+    {!!profile?.staff?.length && <View style={{gap:8}}>
+      <Text style={s.h2}>People mentioned in reviews</Text>
+      {profile.staff.map((person,i)=><View key={i} style={{gap:3}}>
+        <ExternalLink url={person.sourceUrl} label={`${person.name}${person.role ? ` · ${person.role}` : ""}`} />
+        <Text style={s.body}>{person.excerpt}</Text>
+      </View>)}
+    </View>}
+    {!!profile?.images?.length && <View style={{gap:8}}>
+      <Text style={s.h2}>Photos · {profile.images.length}</Text>
+      <ScrollView horizontal contentContainerStyle={{gap:10}}>
+        {profile.images.map((photo,i)=><View key={i} style={{width:128,gap:4}}>
+          <Pressable accessibilityRole="link" accessibilityLabel={photo.caption || `Photo ${i+1}`} onPress={()=>void Linking.openURL(photo.url)}><Image source={{uri:photo.url}} style={{width:128,height:96,borderRadius:8,backgroundColor:colors.pale}}/><Text numberOfLines={1} style={s.body}>{photo.caption || `Photo ${i+1}`}</Text></Pressable>
+          <ExternalLink url={photo.sourceUrl} label="Source review / photo" />
+        </View>)}
+      </ScrollView>
+    </View>}
+    {!!profile?.reviews?.length && <DetailSection title={`Reviews · ${profile.reviews.length}${profile.rating !== undefined ? ` · ★ ${profile.rating}` : ""}`}>
+      {profile.reviews.map((review,i)=><View key={i} style={{gap:5,paddingVertical:6}}><Text style={s.body}>{review.text}</Text><ExternalLink url={review.sourceUrl} label={`${review.author} · ${review.rating ?? "—"} / 5`} /></View>)}
+    </DetailSection>}
+  </View>;
 }
 function ResearchEditor({
   lead,
@@ -1089,7 +1019,12 @@ const styles = StyleSheet.create({
 });
 
 function ContentEditor({lead, refresh}: {lead:Lead; refresh:()=>Promise<void>}) {
-  const [open, setOpen] = useState(false), [notes, setNotes] = useState(lead.researchNotes),
+  const [open, setOpen] = useState(false),
+    [staff, setStaff] = useState(lead.profile?.staff || []),
+    [images, setImages] = useState(lead.profile?.images || []),
+    [reviews, setReviews] = useState(lead.profile?.reviews || []),
+    [assetsDirty, setAssetsDirty] = useState(false),
+    [notes, setNotes] = useState(lead.researchNotes),
     [socials, setSocials] = useState(lead.profile?.onlinePresence || []),
     [socialDirty, setSocialDirty] = useState(false),
     [address, setAddress] = useState(lead.profile?.address || ""),
@@ -1104,11 +1039,11 @@ function ContentEditor({lead, refresh}: {lead:Lead; refresh:()=>Promise<void>}) 
   async function save() {
     setBusy(true); setError("");
     try {
-      const profileChanged = socialDirty || maps !== (lead.profile?.googleMapsUrl || "") || mapsType !== (lead.profile?.googleMapsLinkType || "search") || addressNotes !== (lead.profile?.addressNotes || "") || address !== (lead.profile?.address || "") || hours !== (lead.profile?.openingHours || "") || email !== (lead.profile?.publicEmail || "") || services !== (lead.profile?.services?.join("\n") || "") || source !== (lead.profile?.sourceUrl || "");
+      const profileChanged = assetsDirty || socialDirty || maps !== (lead.profile?.googleMapsUrl || "") || mapsType !== (lead.profile?.googleMapsLinkType || "search") || addressNotes !== (lead.profile?.addressNotes || "") || address !== (lead.profile?.address || "") || hours !== (lead.profile?.openingHours || "") || email !== (lead.profile?.publicEmail || "") || services !== (lead.profile?.services?.join("\n") || "") || source !== (lead.profile?.sourceUrl || "");
       if (mapsType === "listing" && !maps.trim()) throw new Error("Add the verified Google Maps listing URL, or choose search.");
       if (profileChanged && !source.trim()) throw new Error("Add the source URL for the business details.");
       await api(`/leads/${lead.id}/content`, "PATCH", {expectedVersion:lead.version, researchNotes:notes,
-        ...(profileChanged ? {profile:{...lead.profile, ...(socialDirty ? {onlinePresence:socials} : {}), address, addressNotes, googleMapsUrl:maps.trim() || mapsUrl({...lead, profile:{...lead.profile, ...(socialDirty ? {onlinePresence:socials} : {}), address, sourceUrl:source, observedAt:new Date().toISOString(), googleMapsUrl:undefined}}), googleMapsLinkType:mapsType, openingHours:hours, ...(email.trim() ? {publicEmail:email.trim()} : {publicEmail:undefined}), services:services.split("\n").map(x=>x.trim()).filter(Boolean), sourceUrl:source.trim(), observedAt:new Date().toISOString()}} : {})});
+        ...(profileChanged ? {profile:{...lead.profile, ...(assetsDirty ? {staff, images, reviews} : {}), ...(socialDirty ? {onlinePresence:socials} : {}), address, addressNotes, googleMapsUrl:maps.trim() || mapsUrl({...lead, profile:{...lead.profile, ...(socialDirty ? {onlinePresence:socials} : {}), address, sourceUrl:source, observedAt:new Date().toISOString(), googleMapsUrl:undefined}}), googleMapsLinkType:mapsType, openingHours:hours, ...(email.trim() ? {publicEmail:email.trim()} : {publicEmail:undefined}), services:services.split("\n").map(x=>x.trim()).filter(Boolean), sourceUrl:source.trim(), observedAt:new Date().toISOString()}} : {})});
       await refresh(); setOpen(false);
     } catch(e) { setError((e as Error).message); } finally {setBusy(false);}
   }
@@ -1141,6 +1076,32 @@ function ContentEditor({lead, refresh}: {lead:Lead; refresh:()=>Promise<void>}) 
           </>}
         </View>;
       })}
+      <Text style={s.h2}>People mentioned in reviews</Text>
+      <Text style={s.body}>Only record people explicitly described as working for the business. Include the supporting review excerpt and source.</Text>
+      {staff.map((person,i)=><View key={i} style={s.card}>
+        <Field label="Staff name" value={person.name} onChangeText={name=>{setAssetsDirty(true);setStaff(staff.map((p,j)=>j===i?{...p,name}:p));}} />
+        <Field label="Role (if stated)" value={person.role || ""} onChangeText={role=>{setAssetsDirty(true);setStaff(staff.map((p,j)=>j===i?{...p,role}:p));}} />
+        <Field label="Supporting review excerpt" multiline value={person.excerpt} onChangeText={excerpt=>{setAssetsDirty(true);setStaff(staff.map((p,j)=>j===i?{...p,excerpt}:p));}} />
+        <Field label="Staff review source URL" value={person.sourceUrl} onChangeText={sourceUrl=>{setAssetsDirty(true);setStaff(staff.map((p,j)=>j===i?{...p,sourceUrl}:p));}} />
+        <Button subtle label="Remove person" onPress={()=>{setAssetsDirty(true);setStaff(staff.filter((_,j)=>j!==i));}} />
+      </View>)}
+      <Button subtle label="Add staff mention" disabled={staff.length>=20} onPress={()=>{setAssetsDirty(true);setStaff([...staff,{name:"",excerpt:"",sourceUrl:""}]);}} />
+      <Text style={s.h2}>Photos from reviews & business</Text>
+      {images.map((photo,i)=><View key={i} style={s.card}>
+        <Field label="Photo URL" value={photo.url} onChangeText={url=>{setAssetsDirty(true);setImages(images.map((p,j)=>j===i?{...p,url}:p));}} />
+        <Field label="Photo caption" value={photo.caption} onChangeText={caption=>{setAssetsDirty(true);setImages(images.map((p,j)=>j===i?{...p,caption}:p));}} />
+        <Field label="Photo source / review URL" value={photo.sourceUrl} onChangeText={sourceUrl=>{setAssetsDirty(true);setImages(images.map((p,j)=>j===i?{...p,sourceUrl}:p));}} />
+        <Button subtle label="Remove photo" onPress={()=>{setAssetsDirty(true);setImages(images.filter((_,j)=>j!==i));}} />
+      </View>)}
+      <Button subtle label="Add photo" disabled={images.length>=10} onPress={()=>{setAssetsDirty(true);setImages([...images,{url:"",caption:"",sourceUrl:""}]);}} />
+      <Text style={s.h2}>Review excerpts</Text>
+      {reviews.map((review,i)=><View key={i} style={s.card}>
+        <Field label="Review text" multiline value={review.text} onChangeText={text=>{setAssetsDirty(true);setReviews(reviews.map((p,j)=>j===i?{...p,text}:p));}} />
+        <Field label="Review author" value={review.author} onChangeText={author=>{setAssetsDirty(true);setReviews(reviews.map((p,j)=>j===i?{...p,author}:p));}} />
+        <Field label="Review source URL" value={review.sourceUrl} onChangeText={sourceUrl=>{setAssetsDirty(true);setReviews(reviews.map((p,j)=>j===i?{...p,sourceUrl}:p));}} />
+        <Button subtle label="Remove review" onPress={()=>{setAssetsDirty(true);setReviews(reviews.filter((_,j)=>j!==i));}} />
+      </View>)}
+      <Button subtle label="Add review" disabled={reviews.length>=10} onPress={()=>{setAssetsDirty(true);setReviews([...reviews,{text:"",author:"",sourceUrl:""}]);}} />
       <Field label="Research notes" multiline value={notes} onChangeText={setNotes} />
       {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       <Button label={busy ? "Saving…" : "Save business details"} disabled={busy} onPress={()=>void save()} />
