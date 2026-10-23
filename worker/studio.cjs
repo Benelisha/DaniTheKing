@@ -1,6 +1,6 @@
 // Outbound Firestore queue: no public listener/tunnel or browser credentials.
 const fs=require('node:fs/promises'),path=require('node:path'),{randomUUID}=require('node:crypto');
-const {designSchema,contentSchema,reviewSchema,assertReviewReady,validateSectionContent,blueprintSchema,alignBlueprintSources,alignWebsiteRows}=require('../functions/lib/studio-domain');
+const {designSchema,contentSchema,reviewSchema,assertReviewReady,validateSectionContent,blueprintSchema,alignBlueprintSources}=require('../functions/lib/studio-domain');
 const {z}=require('zod');
 const {facts,factsFingerprint}=require('../functions/lib/studio-facts');
 const quality=require('./studio-quality.cjs');
@@ -9,6 +9,16 @@ let db,hostedModel;
 async function claim(ref){return db.runTransaction(async tx=>{const lock=db.doc('internal/studioWorkerLock'),[s,l]=await Promise.all([tx.get(ref),tx.get(lock)]);if(!s.exists||!['queued','running','building'].includes(s.data().status)||(l.exists&&l.data().until>Date.now()))return false;tx.set(lock,{workerId,jobId:ref.id,until:Date.now()+120000});tx.update(ref,{status:'running',updatedAt:new Date().toISOString(),attempts:(s.data().attempts||0)+1});return true;});}
 async function fenced(ref,patch={}){await db.runTransaction(async tx=>{const lock=db.doc('internal/studioWorkerLock'),l=await tx.get(lock);if(l.data()?.workerId!==workerId||l.data()?.jobId!==ref.id||l.data().until<Date.now())throw Error('Worker lease lost');tx.update(lock,{until:Date.now()+120000});tx.update(ref,{...patch,updatedAt:new Date().toISOString()});});}
 async function modelJSON(dir,filename,schema,prompt,images=[]){return hostedModel(dir,filename,schema,prompt,images);}
+function comparisonModelSchema(examples){
+ const row=z.object({strengthsMatched:z.array(z.string()),remainingGaps:z.array(z.string())});
+ return reviewSchema.omit({comparisons:true}).extend({comparisons:z.object(Object.fromEntries(examples.map((e,i)=>[`competitor${i+1}`,row.describe(`Assessment only for selected website ${e.websiteUrl}; use its corresponding captured evidence.`)])))});
+}
+function bindComparisons(report,examples,refs){
+ return {...report,comparisons:examples.map((e,i)=>{
+  const observed=!!refs.find(r=>r.websiteUrl===e.websiteUrl)?.observed,row=report.comparisons[`competitor${i+1}`];
+  return {websiteUrl:e.websiteUrl,observed,strengthsMatched:observed?row.strengthsMatched:[],remainingGaps:observed?row.remainingGaps:['Visual comparison unavailable for this selected website.']};
+ })};
+}
 async function processJob(ref){
  let lost=false;const timer=setInterval(()=>fenced(ref).catch(()=>{lost=true;}),20000);
  try{
@@ -47,10 +57,11 @@ async function processJob(ref){
     const after=await quality.capture(browser,{business,...draft},dir,'after');
     await fenced(ref,{phase:'Reviewing the final result against competitors',browserChecksPassed:after.checks.passed});
     console.log(`Studio ${ref.id}: preparing final comparison report`);
-    const report=await modelJSON(dir,'review',reviewSchema,'Review improved-site.json, competitors.json, after-checks.json and the attached final desktop/mobile and competitor images. Score design, content and UX strictly 0-100 against the observed competitors. Return five comparison rows in original example order, mark inaccessible websites observed:false. Check EVERY blueprint section ID. Summarize improvements and unresolved gaps. Ready only if professional visual quality, meaningful sections, real sourced social proof where available, functioning contact paths and mobile quality are comparable to observed competitors. Do not report parity for inaccessible websites. Require scores >=85 and no blockers. Be honest: do not inflate scores to pass. Changes made: '+JSON.stringify(improved.changes),[...after.screens,...refs.filter(v=>v.screenshot).map(v=>v.screenshot)]);
+    await ref.collection('checkpoints').doc('review').set({draft,browserChecks:after.checks,factsFingerprint:factsFingerprint(business),savedAt:new Date().toISOString()});
+    let report=await modelJSON(dir,'review',comparisonModelSchema(draft.examples),'Review improved-site.json, competitors.json, after-checks.json and the attached final desktop/mobile and competitor images. Score design, content and UX strictly 0-100 against the observed competitors. Return comparison keys competitor1 through competitor5 in selected example order. Each key belongs only to the URL described in its schema. Do not choose or return source URLs or observed flags; the server owns source identity and availability. For unavailable competitors, leave strengthsMatched empty and explain that comparison is unavailable in remainingGaps. Check EVERY blueprint section ID. Summarize improvements and unresolved gaps. Ready only if professional visual quality, meaningful sections, real sourced social proof where available, functioning contact paths and mobile quality are comparable to observed competitors. Do not report parity for inaccessible websites. Require scores >=85 and no blockers. Be honest: do not inflate scores to pass. Screenshot order after our desktop/mobile: '+JSON.stringify(refs.filter(r=>r.screenshot).map(r=>r.websiteUrl))+'. Changes made: '+JSON.stringify(improved.changes),[...after.screens,...refs.filter(v=>v.screenshot).map(v=>v.screenshot)]);
     report.changes=improved.changes;
     // Browser evidence is authoritative over a model verdict.
-    report.comparisons=alignWebsiteRows(report.comparisons,draft.examples).map(v=>({...v,observed:!!refs.find(r=>r.websiteUrl===v.websiteUrl)?.observed}));
+    report=bindComparisons(report,draft.examples,refs);
     if(!after.checks.passed){report.ready=false;report.blockers.push('Automated desktop/mobile or contrast checks failed.');}
     draft.review=report;draft.reviewChecks={...after.checks,checkedAt:new Date().toISOString()};
     try{validateSectionContent(draft);assertReviewReady(draft);}catch(e){draft.review.ready=false;if(!draft.review.blockers.includes(e.message))draft.review.blockers.push(e.message);}
@@ -64,4 +75,4 @@ async function processJob(ref){
 }
 if(require.main===module)throw Error('Studio jobs now run in Firebase; the local studio worker is retired.');
 async function hosted(database,id,model){db=database;hostedModel=model;const ref=db.doc(`siteJobs/${id}`),job=await ref.get();if(!job.exists||!['queued','running','building'].includes(job.data().status))return;if(!['design','review'].includes(job.data().stage))throw Error('Unsupported hosted stage');if(!await claim(ref))throw Error('Studio worker lease busy');await processJob(ref);}
-module.exports={hosted};
+module.exports={hosted,comparisonModelSchema,bindComparisons};

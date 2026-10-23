@@ -18,3 +18,10 @@ test('a stale job cannot overwrite newer edits',async()=>{
 test('an active lease prevents another hosted delivery from running',async()=>{
  const db=database();db.rows.set('internal/studioWorkerLock',{workerId:'other',jobId:'other',until:Date.now()+120000});await assert.rejects(hosted(db,'test',()=>{}),/lease busy/);assert.equal(db.rows.get('siteJobs/test').status,'queued');
 });
+test('comparison identities and availability come from selected sources rather than model URLs',()=>{
+ const {comparisonModelSchema,bindComparisons}=require('./studio.cjs');const examples=Array.from({length:5},(_,i)=>({websiteUrl:`https://source${i}.com`}));
+ const report={summary:'A report grounded in selected browser evidence.',scores:{design:90,content:90,ux:90},comparisons:Object.fromEntries(examples.map((_,i)=>[`competitor${i+1}`,{websiteUrl:'https://wrong.example',observed:true,strengthsMatched:['Clear navigation'],remainingGaps:[]}])),sectionChecks:Array.from({length:5},(_,i)=>({id:'section'+i,passed:true,notes:'Checked'})),changes:[],blockers:[],ready:true};
+ const parsed=comparisonModelSchema(examples).parse(report),bound=bindComparisons(parsed,examples,examples.map((e,i)=>({...e,observed:i<3})));
+ assert.deepEqual(bound.comparisons.map(v=>v.websiteUrl),examples.map(v=>v.websiteUrl));assert.deepEqual(bound.comparisons.map(v=>v.observed),[true,true,true,false,false]);assert.deepEqual(bound.comparisons[4].strengthsMatched,[]);assert.ok(bound.comparisons[4].remainingGaps.length);assert.ok(!('websiteUrl' in parsed.comparisons.competitor1));
+ delete report.comparisons.competitor5;assert.throws(()=>comparisonModelSchema(examples).parse(report));
+});
