@@ -209,6 +209,16 @@ test(
           assert.ok((await listAfter.json() as any).leads.some((l:any)=>l.id===id&&l.googleVerified));
           const noExamples = await fetch(`http://127.0.0.1:${port}/api/leads/${id}/generations`,{method:"POST",headers,body:JSON.stringify({expectedVersion:after.version+1})});
           assert.equal(noExamples.status,409);
+          const historyBeforeRemoval = await db().collection(`leads/${id}/activity`).get();
+          const staleRemoval = await fetch(`http://127.0.0.1:${port}/api/leads/${id}`,{method:"DELETE",headers,body:JSON.stringify({expectedVersion:after.version})});
+          assert.equal(staleRemoval.status,409);
+          const removed = await fetch(`http://127.0.0.1:${port}/api/leads/${id}`,{method:"DELETE",headers,body:JSON.stringify({expectedVersion:after.version+1})});
+          assert.equal(removed.status,200);
+          const allAfterRemoval = await fetch(`http://127.0.0.1:${port}/api/leads?view=all`,{headers});
+          assert.ok(!(await allAfterRemoval.json() as any).leads.some((l:any)=>l.id===id));
+          assert.equal((await db().doc(`leads/${id}`).get()).data()!.removedBy,email);
+          assert.equal((await db().collection(`leads/${id}/activity`).get()).size,historyBeforeRemoval.size);
+
         }
         for (const path of ["me", "leads", "settings", "runs", "generator/status"]) {
           const response = await fetch(`http://127.0.0.1:${port}/api/${path}`, {

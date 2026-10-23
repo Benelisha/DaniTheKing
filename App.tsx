@@ -1,4 +1,4 @@
-import {ManagedJobs,ManagedSettings} from "./src/Managed";
+import {CompactGenerate,ManagedJobs,ManagedSettings} from "./src/Managed";
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -125,6 +125,16 @@ function Workspace() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+  const [generatingIds,setGeneratingIds]=useState<string[]>([]);
+  useEffect(()=>{
+    let active=true;
+    const load=async()=>{try{
+      const jobs=await api<any[]>("/managed/jobs");
+      if(active)setGeneratingIds(jobs.filter(j=>j.kind==="generation" && !["completed","failed","cancelled","ready","needs_review","published"].includes(j.status)).map(j=>j.leadId));
+    }catch{}};
+    void load();const timer=setInterval(load,5000);
+    return()=>{active=false;clearInterval(timer);};
+  },[]);
   const refresh = useCallback(async () => {
     setError("");
     try {
@@ -225,7 +235,8 @@ function Workspace() {
                       "LOCATION",
                       "WEBSITE CHECK",
                       "CALL STATUS",
-                      "GENERATED WEBSITE",
+                      "GENERATE WEBSITE",
+                      "HOSTED WEBSITE",
                     ].map((v, i) => (
                       <Text
                         key={v}
@@ -295,7 +306,6 @@ function Workspace() {
                           </Text>
                           <VerificationBadge lead={l} />
                           <Text style={{ fontSize: 11, color: colors.muted }}>{l.competitors?.length || 0}/5 business examples{l.potentialDuplicateId ? " · Duplicate review" : ""}</Text>
-                          <SocialLinks lead={l} />
                         </View>
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
@@ -318,7 +328,10 @@ function Workspace() {
                         <Badge text={l.callStatus} />
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
-                        <Text style={s.body}>Open the business to research or generate with Gemini.</Text>
+                        <CompactGenerate lead={l} refresh={refresh} running={generatingIds.includes(l.id)} onQueued={()=>setGeneratingIds(ids=>[...ids,l.id])} />
+                      </View>
+                      <View style={styles.col}>
+                        {l.generatedWebsiteUrl ? <ExternalLink compact url={l.generatedWebsiteUrl} label={l.generatedWebsiteUrl} /> : <Text style={s.body}>—</Text>}
                       </View>
                     </Pressable>
                   ))
@@ -409,6 +422,7 @@ function LeadDetail({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [saved, setSaved] = useState(""),
+    [confirmRemove, setConfirmRemove] = useState(false),
     [history, setHistory] = useState<any[]>([]);
   const loadHistory = useCallback(
     () =>
@@ -465,6 +479,19 @@ function LeadDetail({
         <Button label={lead.callStatus === "Do not call" ? "Do not call — contact suppressed" : "Call business"} icon="phone" disabled={lead.callStatus === "Do not call"} onPress={() => void Linking.openURL(`tel:${lead.phone}`)} />
         {!!lead.potentialDuplicateId && <Text style={s.error}>Possible duplicate — review before calling.</Text>}
       </View>
+      <View style={{gap:8}}>
+        <Button subtle label="Remove lead" disabled={busy} onPress={()=>setConfirmRemove(true)} />
+        {confirmRemove && <View style={{gap:8}}>
+          <Text style={s.body}>Remove {lead.businessName} from the leads list? Its history will be preserved.</Text>
+          <Button label={busy ? "Removing…" : "Confirm removal"} disabled={busy} onPress={()=>void (async()=>{
+            setBusy(true);setError("");
+            try {await api(`/leads/${lead.id}`,"DELETE",{expectedVersion:lead.version});await refresh();close();}
+            catch(e){setError((e as Error).message);}finally{setBusy(false);}
+          })()} />
+          <Button subtle label="Cancel" disabled={busy} onPress={()=>setConfirmRemove(false)} />
+        </View>}
+        {!!error && <Text style={s.error}>{error}</Text>}
+      </View>
       <ReviewAssets lead={lead} />
       <View style={s.section}>
         <Text style={s.h2}>Call status</Text>
@@ -493,7 +520,8 @@ function LeadDetail({
       </DetailSection>
       <DetailSection title={`Business examples · ${lead.competitors?.length || 0}`}>
         {lead.competitors?.map((competitor, i) => <View key={i} style={{gap:6}}>
-          <ExternalLink url={competitor.websiteUrl} label={competitor.businessName} />
+          <Text style={s.h2}>{competitor.businessName}</Text>
+          <ExternalLink url={competitor.websiteUrl} label={competitor.websiteUrl} />
           <Text style={s.body}>{competitor.verificationNotes}</Text>
         </View>)}
       </DetailSection>
@@ -999,7 +1027,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 18,
     paddingHorizontal: 20,
-    paddingVertical: 19,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: "#edf0eb",
   },

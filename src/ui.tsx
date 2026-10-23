@@ -201,15 +201,16 @@ export function FilterSelect({ label, values, value, onChange }: {
     </Modal>
   </>;
 }
-export function ExternalLink({ url, label }: { url: string; label?: string }) {
+export function ExternalLink({ url, label, compact = false }: { url: string; label?: string; compact?: boolean }) {
   return (
     <Pressable
       accessibilityRole="link"
-      onPress={() => {
+      onPress={(event) => {
+        event.stopPropagation();
         if (/^https?:\/\//.test(url)) void Linking.openURL(url);
       }}
     >
-      <Text
+      <Text numberOfLines={compact ? 1 : undefined}
         style={{
           color: colors.green,
           fontSize: 13,

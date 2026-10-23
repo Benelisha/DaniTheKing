@@ -11,6 +11,7 @@ import {
   ExceptionFilter,
   ArgumentsHost,
   Get,
+  Delete,
   HttpException,
   Injectable,
   Module,
@@ -91,9 +92,21 @@ class BackOfficeController {
     const checks = rows.length ? await db().getAll(...rows.map(d => db().doc(`googleVerifications/${d.id}`))) : [];
     const leads = rows.map((d, i) => ({id:d.id, ...d.data(), googleVerification:checks[i].data() || null, googleVerified:verified(d.data(), checks[i].data())}));
     return {
-      leads: leads.filter(l => view === "all" || (view === "unverified" ? !l.googleVerified : l.googleVerified)),
+      leads: leads.filter((l: any) => !l.removedAt).filter(l => view === "all" || (view === "unverified" ? !l.googleVerified : l.googleVerified)),
       cursor: result.size > 100 ? result.docs[99].id : null,
     };
+  }
+  @Delete("leads/:id") async remove(@Param("id") id: string, @Body() body: unknown, @Req() req: AuthRequest) {
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new HttpException("Invalid lead", 400);
+    const {expectedVersion} = z.object({expectedVersion:z.number().int()}).parse(body);
+    await db().runTransaction(async tx => {
+      const ref = db().doc(`leads/${id}`);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new HttpException("Lead not found",404);
+      if (snap.data()!.version !== expectedVersion) throw new HttpException("Lead changed. Refresh and retry.",409);
+      tx.update(ref,{removedAt:new Date().toISOString(),removedBy:req.actor,version:expectedVersion+1});
+    });
+    return {removed:true};
   }
   @Post("leads") async create(@Body() body: unknown, @Req() req: AuthRequest) {
     const lead = leadSchema.parse(body);

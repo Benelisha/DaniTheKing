@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Platform, Image } from "react-native";
+import { View, Text, Platform, Image, Pressable } from "react-native";
 import { api } from "./firebase";
 import { Button, Field, ExternalLink, s } from "./ui";
 import { Lead } from "./types";
@@ -426,4 +426,14 @@ export function ManagedJobs({
       )}
     </View>
   );
+}
+
+export function CompactGenerate({lead,refresh,running,onQueued}:{lead:Lead;refresh:()=>Promise<void>;running:boolean;onQueued:()=>void}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+  return <Pressable onPress={event=>event.stopPropagation()} style={{gap:4}}>
+    <Button label={busy||running ? "Generating…" : "Generate"} icon="zap" disabled={busy||running||!lead.googleVerified||lead.callStatus==="Do not call"} onPress={()=>void(async()=>{
+      setBusy(true);setError("");try{await api(`/managed/leads/${lead.id}/generation`,"POST",{});onQueued();await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}
+    })()} />
+    {!!error&&<Text style={s.error}>{error}</Text>}
+  </Pressable>;
 }
