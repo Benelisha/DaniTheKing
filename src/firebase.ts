@@ -34,7 +34,9 @@ export async function api<T = any>(
   );
   if (!response.headers.get("content-type")?.includes("application/json"))
     throw new Error(
-      "The backend is not available yet. Firebase Functions deployment must be completed.",
+      response.status >= 500
+        ? `The server request was interrupted (${response.status}). Reload the saved studio to check generation progress before retrying.`
+        : `The server returned an unexpected response (${response.status}). Please retry.`,
     );
   const data = await response.json();
   if (!response.ok) throw new Error(data.message || "The request failed.");

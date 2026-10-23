@@ -16,3 +16,7 @@ test('a completed but failing quality review stops for attention',async()=>{
  const read=f.options.read;f.options.read=async()=>{const state=await read();state.draft.review.ready=false;return state;};
  await assert.rejects(generateAll(f.options),/Quality review needs attention/);assert.deepEqual(f.stages,['review']);
 });
+test('invalid saved examples restart discovery rather than reusing bad sources',async()=>{
+ const f=fixture();f.options.initial.invalidExamples=true;f.options.initial.draft.examples=[{}];
+ await generateAll(f.options);assert.deepEqual(f.stages,generationStages);
+});

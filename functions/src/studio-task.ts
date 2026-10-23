@@ -13,6 +13,9 @@ export async function studioText(prompt:string,config:Awaited<ReturnType<typeof 
  }
 }
 export async function processStudio(id:string){
+ const job=await db().doc(`siteJobs/${id}`).get();
+ if(!job.exists||['completed','failed','cancelled'].includes(job.data()!.status))return;
+ if(!['design','review'].includes(job.data()!.stage)){const {processStudioResearch}=await import('./sites');await processStudioResearch(id);return;}
  process.env.STUDIO_HOSTED='true';
  const {hosted}=require('../studio-runtime/worker/studio.cjs');
  const config=await managedSettings();

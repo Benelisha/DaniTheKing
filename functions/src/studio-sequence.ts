@@ -2,7 +2,7 @@
 export const generationStages=['examples','blueprint','brief','content','design','review'] as const;
 export async function generateAll(options:{initial:any;read:()=>Promise<any>;generate:(stage:string,revision:number)=>Promise<any>;active:()=>boolean;update:(state:any,stage:string)=>void;wait:()=>Promise<void>}){
  let state=options.initial;
- const start=generationStages.findIndex(stage=>!state.draft?.[stage]||(stage==='review'&&(!state.draft.review.ready||!state.draft.reviewChecks?.passed)));
+ const start=state.invalidExamples?0:generationStages.findIndex(stage=>!state.draft?.[stage]||(stage==='review'&&(!state.draft.review.ready||!state.draft.reviewChecks?.passed)));
  if(start<0)return state;
  for(const stage of generationStages.slice(start)){
   if(!options.active())return state;

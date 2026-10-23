@@ -60,7 +60,7 @@ export const recoverStudioJobs=onSchedule({schedule:'every 5 minutes',region:'us
  const {db}=await import('./store');const {enqueueStudio}=await import('./studio-task');
  const lock=(await db().doc('internal/studioWorkerLock').get()).data();
  const jobs=await db().collection('siteJobs').where('status','in',['queued','running','building']).get();
- for(const job of jobs.docs)if(['design','review'].includes(job.data().stage)&&!(lock?.jobId===job.id&&lock.until>Date.now())){
+ for(const job of jobs.docs)if(!(lock?.jobId===job.id&&lock.until>Date.now())&&(job.data().leaseUntil||0)<Date.now()){
   if((job.data().attempts||0)>=5)await job.ref.update({status:'failed',error:'Hosted worker was interrupted repeatedly. Please retry this step.',updatedAt:new Date().toISOString()});
   else await enqueueStudio(job.id);
  }

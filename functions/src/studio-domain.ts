@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {randomBytes} from 'node:crypto';
-export const exampleSchema=z.object({businessName:z.string().min(2),websiteUrl:z.url().refine(v=>new URL(v).protocol==='https:'),notes:z.string().min(10)});
+export const exampleSchema=z.object({businessName:z.string().min(2).refine(v=>!/(?:missing data report|placeholder|unable to (?:inspect|access)|not (?:found|available))/i.test(v),'Use an actual business name, not a research error or placeholder'),websiteUrl:z.url().refine(v=>new URL(v).protocol==='https:').refine(v=>!/(?:data-not-extracted|placeholder|example\.(?:com|org|net))(?:[./-]|$)/i.test(new URL(v).hostname),'Use a real competitor website, not a placeholder'),notes:z.string().min(10)});
 export const examplesSchema=z.array(exampleSchema).length(5).refine(rows=>new Set(rows.map(r=>new URL(r.websiteUrl).hostname.replace(/^www\./,''))).size===5,'Use five distinct websites');
 export const analysisSchema=z.array(z.object({websiteUrl:z.url(),good:z.array(z.string().min(5)).length(5),bad:z.array(z.string().min(5)).length(5)})).length(5);
 export const briefSchema=z.object({direction:z.string().min(10).max(3000),audience:z.string().min(3).max(500),sections:z.string().min(5).max(1500),features:z.array(z.enum(['contact','newsletter','appointment'])).default(['contact'])});

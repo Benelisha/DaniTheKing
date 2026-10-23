@@ -26,3 +26,13 @@ test('revision requests reject empty input, wrong stage and stale drafts without
  for(const [stage,body] of [['review',{revision:4,instructions:' ',requestId}],['design',{revision:4,instructions:'Change the headline',requestId}],['review',{revision:3,instructions:'Change the headline',requestId}]] as const)await assert.rejects(controller.generate(leadId,stage,body,{actor:'tester'}));
  assert.equal(records.size,1);assert.equal(records.get(`websiteStudios/${leadId}`).revisionRequestCount,2);
 });
+test('every research stage queues immediately without calling the provider in the HTTP request',async t=>{
+ const {controller,enqueued,records}=fixture(t);
+ for(const stage of ['examples','analysis','blueprint','brief','content']){
+  const result=await controller.generate(leadId,stage,{revision:4},{actor:'tester'});
+  assert.equal(records.get(`siteJobs/${result.jobId}`).status,'queued');
+  assert.equal(records.get(`siteJobs/${result.jobId}`).stage,stage);
+  records.get(`siteJobs/${result.jobId}`).status='completed';
+ }
+ assert.equal(enqueued.length,5);
+});
