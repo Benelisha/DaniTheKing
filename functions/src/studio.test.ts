@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {businessSlug,examplesSchema,validateStage,studioSchema} from './studio-domain';
+import {PublicSitesController} from './sites';
+import * as store from './store';
+const examples=Array.from({length:5},(_,i)=>({businessName:`Business ${i}`,websiteUrl:`https://business${i}.com`,notes:'Observed website layout and contact information.'}));
+test('studio permits incomplete drafts but requires five distinct examples before analysis',()=>{
+ assert.deepEqual(studioSchema.parse({}),{});assert.doesNotThrow(()=>validateStage('examples',{}));assert.throws(()=>validateStage('analysis',{}));assert.doesNotThrow(()=>validateStage('analysis',{examples}));assert.equal(examplesSchema.safeParse([...examples.slice(0,4),examples[0]]).success,false);
+});
+test('publishing requires reviewed content and design, with stable business paths',()=>{
+ assert.throws(()=>validateStage('publish',{examples}));assert.equal(businessSlug('Chrome Pools LLC','abcdef1234'),'chrome-pools-llc-abcdef');assert.equal(businessSlug('Café & Pool','123456789'),'cafe-pool-123456');assert.notEqual(businessSlug('Same','aaaaaa'),businessSlug('Same','bbbbbb'));
+});
+test('removed leads cannot serve published website content even if a document remains',async t=>{
+ t.mock.method(store,'db',()=>({doc:(p:string)=>({get:async()=>({exists:true,data:()=>p.startsWith('published')?{leadId:'a'.repeat(32)}:{removedAt:'2026-10-23'}})})}) as any);
+ await assert.rejects(new PublicSitesController().website('removed-business'),/no longer available/);
+});

@@ -24,3 +24,6 @@ gha-creds-*.json
 worker-artifacts/
 *service-account*.json
 application_default_credentials.json
+
+websites/dist/
+websites/.expo/

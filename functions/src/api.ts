@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { SitesController, PublicSitesController } from "./sites";
 import {AccessGuard} from "./access";
 export {AccessGuard} from "./access";
 import {ManagedController} from "./managed-api";
@@ -104,7 +105,10 @@ class BackOfficeController {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new HttpException("Lead not found",404);
       if (snap.data()!.version !== expectedVersion) throw new HttpException("Lead changed. Refresh and retry.",409);
-      tx.update(ref,{removedAt:new Date().toISOString(),removedBy:req.actor,version:expectedVersion+1});
+      const at = new Date().toISOString();
+      tx.update(ref,{removedAt:at,removedBy:req.actor,version:expectedVersion+1,generatedWebsiteUrl:""});
+      if(snap.data()!.websiteSlug)tx.delete(db().doc(`publishedWebsites/${snap.data()!.websiteSlug}`));
+      tx.create(db().collection("websiteCleanupHistory").doc(),{leadId:id,at,actor:req.actor,status:"completed",slug:snap.data()!.websiteSlug||null});
     });
     return {removed:true};
   }
@@ -255,7 +259,7 @@ class BackOfficeController {
       throw new HttpException("Invalid lead ID", 400);
   }
 }
-@Module({ controllers: [BackOfficeController, ManagedController], providers: [AccessGuard] })
+@Module({ controllers: [BackOfficeController, ManagedController, SitesController, PublicSitesController], providers: [AccessGuard] })
 class BackOfficeModule {}
 let serverPromise: Promise<express.Express> | undefined;
 export function createApi(configure?: (server: express.Express) => void) {
@@ -273,11 +277,13 @@ export function createApi(configure?: (server: express.Express) => void) {
       origin: [
         "https://daniboy-be1c0.web.app",
         "https://daniboy-be1c0.firebaseapp.com",
+        "https://daniboy-be1c0-prospects.web.app",
+        "https://daniboy-be1c0-prospects.firebaseapp.com",
         ...(process.env.FUNCTIONS_EMULATOR === "true"
           ? ["http://localhost:8081"]
           : []),
       ],
-      methods: ["GET", "POST", "PATCH", "OPTIONS"],
+      methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Authorization", "Content-Type"],
     });
     app.useGlobalFilters(new ApiErrors());

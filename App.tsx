@@ -1,3 +1,4 @@
+import {WebsiteStudioButton} from "./src/WebsiteStudio";
 import {CompactGenerate,ManagedJobs,ManagedSettings} from "./src/Managed";
 import React, { useEffect, useState, useCallback } from "react";
 import {
@@ -238,7 +239,7 @@ function Workspace() {
                       "LOCATION",
                       "WEBSITE CHECK",
                       "CALL STATUS",
-                      "GENERATE WEBSITE",
+                      "WEBSITE STUDIO",
                       "HOSTED WEBSITE",
                     ].map((v, i) => (
                       <Text
@@ -331,7 +332,7 @@ function Workspace() {
                         <Badge text={l.callStatus} />
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
-                        <CompactGenerate lead={l} refresh={refresh} running={generatingIds.includes(l.id)} onQueued={()=>setGeneratingIds(ids=>[...ids,l.id])} />
+                        <WebsiteStudioButton lead={l} refresh={refresh} />
                       </View>
                       <View style={styles.col}>
                         {l.generatedWebsiteUrl ? <ExternalLink compact url={l.generatedWebsiteUrl} label={l.generatedWebsiteUrl} /> : <Text style={s.body}>—</Text>}
@@ -519,7 +520,7 @@ function LeadDetail({
       </View>
       <ContentEditor key={`${lead.id}:${lead.version}`} lead={lead} refresh={refresh} />
       <DetailSection title="Generated website">
-        <ManagedJobs lead={lead} refresh={refresh}/>
+        <WebsiteStudioButton lead={lead} refresh={refresh} />
       </DetailSection>
       <DetailSection title={`Business examples · ${lead.competitors?.length || 0}`}>
         {lead.competitors?.map((competitor, i) => <View key={i} style={{gap:6}}>
