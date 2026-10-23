@@ -3,7 +3,7 @@ import { getStorage } from "firebase-admin/storage";
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { db } from "./store";
-import { verified, identityFingerprint } from "./google-identity";
+import { identityFingerprint } from "./google-identity";
 const SITE = "daniboy-be1c0-prospects";
 async function token() {
   return (await getApp().options.credential!.getAccessToken()).access_token;
@@ -41,21 +41,16 @@ export async function publishManaged(
     const [s, l] = await Promise.all([tx.get(ref), tx.get(lock)]);
     if (!s.exists) throw Error("Draft not found");
     const j = s.data()!;
-    const [lead, v] = await Promise.all([
-      tx.get(db().doc(`leads/${j.leadId}`)),
-      tx.get(db().doc(`googleVerifications/${j.leadId}`)),
-    ]);
+    const lead = await tx.get(db().doc(`leads/${j.leadId}`));
     if (remove && lead.data()?.publishedManagedJobId !== id)
       throw Error("Only the currently published version can be unpublished");
-    if (!["ready", "published"].includes(j.status))
-      throw Error("Only reviewed drafts can publish");
+    if (!["ready", "published"].includes(j.status) && !(j.status === "running" && j.stage === "publish"))
+      throw Error("The website is not ready to publish");
     if (
       !remove &&
-      (!verified(lead.data()!, v.data()) ||
-        identityFingerprint(lead.data()!) !== j.snapshot.identityFingerprint ||
-        lead.data()?.callStatus === "Do not call")
+      (!lead.exists || identityFingerprint(lead.data()!) !== j.snapshot.identityFingerprint)
     )
-      throw Error("Business identity changed; reverify and regenerate");
+      throw Error("Business details changed; regenerate");
     if (l.exists && l.data()!.until > Date.now())
       throw Error("Another publication is in progress");
     tx.set(lock, { owner, until: Date.now() + 600000 });

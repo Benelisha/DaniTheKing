@@ -24,14 +24,14 @@ export function ManagedSettings() {
     <View style={[s.card, { gap: 12 }]}>
       <Text style={s.h2}>Gemini backend</Text>
       <Text style={s.body}>
-        Research and generate in the cloud. Only your two approved accounts can
+        Generate and publish websites automatically in the cloud, with no setup switch. Only your two approved accounts can
         use these operations.
       </Text>
       <Button
         label={
           config.enabled
-            ? "Managed workflow enabled"
-            : "Enable managed workflow"
+            ? "Discovery and research enabled"
+            : "Enable discovery and research"
         }
         onPress={() => setConfig({ ...config, enabled: !config.enabled })}
       />
@@ -131,7 +131,7 @@ export function ManagedJobs({
             <Button
               key={kind}
               disabled={
-                busy || (kind === "generation" && !lead?.googleVerified)
+                busy
               }
               label={
                 {
@@ -431,7 +431,7 @@ export function ManagedJobs({
 export function CompactGenerate({lead,refresh,running,onQueued}:{lead:Lead;refresh:()=>Promise<void>;running:boolean;onQueued:()=>void}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
   return <Pressable onPress={event=>event.stopPropagation()} style={{gap:4}}>
-    <Button label={busy||running ? "Generating…" : "Generate"} icon="zap" disabled={busy||running||!lead.googleVerified||lead.callStatus==="Do not call"} onPress={()=>void(async()=>{
+    <Button label={busy||running ? "Generating…" : lead.generatedWebsiteUrl ? "Regenerate" : "Generate"} icon="zap" disabled={busy||running} onPress={()=>void(async()=>{
       setBusy(true);setError("");try{await api(`/managed/leads/${lead.id}/generation`,"POST",{});onQueued();await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}
     })()} />
     {!!error&&<Text style={s.error}>{error}</Text>}

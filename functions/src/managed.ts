@@ -4,8 +4,9 @@ import { getStorage } from "firebase-admin/storage";
 import { z } from "zod";
 import { db, settings, upsertLead } from "./store";
 import { leadSchema } from "./domain";
-import { verified, identityFingerprint } from "./google-identity";
+import { identityFingerprint } from "./google-identity";
 import { gemini, managedSettings, parseJson } from "./gemini";
+import { publishManaged } from "./publishing";
 import {
   briefSchema,
   findingSchema,
@@ -28,7 +29,7 @@ export async function startManaged(
   leadId?: string,
 ) {
   const config = await managedSettings();
-  if (!config.enabled)
+  if (kind !== "generation" && !config.enabled)
     throw fail("Enable managed Gemini workflows in settings first.");
   const id = randomUUID();
   const discoverySettings = kind === "discovery" ? await settings() : null;
@@ -47,11 +48,6 @@ export async function startManaged(
       : null;
     if (active?.exists && !terminal.has(active.data()!.status))
       return { id: active.id, status: active.data()!.status };
-    if (
-      kind === "generation" &&
-      (!verified(data!, v?.data()) || data?.callStatus === "Do not call")
-    )
-      throw fail("Verify the business identity before generating.");
     const media = leadId
       ? await tx.get(
           db()
@@ -182,17 +178,11 @@ export async function processManaged(id: string) {
     }
     if (job.kind === "generation") {
       const lead = (await db().doc(`leads/${job.leadId}`).get()).data();
-      const v = (
-        await db().doc(`googleVerifications/${job.leadId}`).get()
-      ).data();
-      if (
-        !lead ||
-        !verified(lead, v) ||
-        identityFingerprint(lead) !== job.snapshot.identityFingerprint ||
-        lead.callStatus === "Do not call"
-      )
-        throw Error("Business identity changed; reverify and start a new job.");
-      if (job.stage === "competitors") {
+      if (!lead || identityFingerprint(lead) !== job.snapshot.identityFingerprint)
+        throw Error("Business details changed; start a new generation.");
+      if (job.stage === "publish") {
+        await publishManaged(id, job.actor);
+      } else if (job.stage === "competitors") {
         const r = await request(
           job,
           `Research five distinct actual competitor business websites for ${JSON.stringify(job.snapshot)}. Prefer same US locality, expand geographically if necessary. Inspect each website. Return JSON {"references":[{"businessName":"","websiteUrl":"https://...","observations":"specific evidence from this site","strengths":[five specific strengths],"weaknesses":[five specific weaknesses]}]}. No directories. Never invent observations. Return fewer if you cannot inspect five.`,
@@ -202,27 +192,11 @@ export async function processManaged(id: string) {
         const refs = z
           .object({ references: z.array(referenceSchema).max(5) })
           .parse(parseJson(r.text)).references;
-        if (
-          refs.length !== 5 ||
-          new Set(
-            refs.map((x) =>
-              new URL(x.websiteUrl).hostname.replace(/^www\./, ""),
-            ),
-          ).size !== 5
-        ) {
-          await checkpoint(job, {
-            status: "needs_review",
-            references: refs,
-            error:
-              "Five distinct usable competitor websites are required. Add competitor URLs to the lead and start a fresh generation.",
-          });
-          return;
-        }
         await checkpoint(job, { references: refs, stage: "content" });
       } else if (job.stage === "content") {
         const r = await request(
           job,
-          `Create original landing-page content using only these verified business facts: ${JSON.stringify(job.snapshot)}. Competitor research: ${JSON.stringify(job.references)}. Adopt useful patterns and avoid weaknesses. No invented credentials, testimonials, prices or staff names. Return JSON matching ${JSON.stringify(z.toJSONSchema(pageSchema))}.`,
+          `Create original landing-page content using only these supplied business details (Google verification is not guaranteed): ${JSON.stringify(job.snapshot)}. Competitor research: ${JSON.stringify(job.references)}. Adopt useful patterns and avoid weaknesses. No invented credentials, testimonials, prices or staff names. Return JSON matching ${JSON.stringify(z.toJSONSchema(pageSchema))}.`,
           "text",
           "content",
         );
@@ -289,7 +263,7 @@ export async function processManaged(id: string) {
             contentType: "text/html",
             metadata: { cacheControl: "private, no-store" },
           });
-        await checkpoint(job, { status: "ready", stage: "ready", error: null });
+        await checkpoint(job, { stage: "publish", error: null });
       }
     } else if (job.kind === "discovery") {
       const c = job.discoverySettings;

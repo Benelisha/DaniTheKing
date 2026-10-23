@@ -124,6 +124,7 @@ export function parseJson(text: string): unknown {
 }
 export const terminal = new Set([
   "ready",
+  "published",
   "completed",
   "failed",
   "cancelled",

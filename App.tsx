@@ -126,15 +126,6 @@ function Workspace() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   const [generatingIds,setGeneratingIds]=useState<string[]>([]);
-  useEffect(()=>{
-    let active=true;
-    const load=async()=>{try{
-      const jobs=await api<any[]>("/managed/jobs");
-      if(active)setGeneratingIds(jobs.filter(j=>j.kind==="generation" && !["completed","failed","cancelled","ready","needs_review","published"].includes(j.status)).map(j=>j.leadId));
-    }catch{}};
-    void load();const timer=setInterval(load,5000);
-    return()=>{active=false;clearInterval(timer);};
-  },[]);
   const refresh = useCallback(async () => {
     setError("");
     try {
@@ -155,6 +146,18 @@ function Workspace() {
       setLoading(false);
     }
   }, []);
+  useEffect(()=>{
+    let active=true;
+    let published = "";
+    const load=async()=>{try{
+      const jobs=await api<any[]>("/managed/jobs");
+      const nextPublished=jobs.filter(j=>j.status==="published").map(j=>`${j.id}:${j.publishedAt}`).sort().join(",");
+      if(active && nextPublished!==published){published=nextPublished;await refresh();}
+      if(active)setGeneratingIds(jobs.filter(j=>j.kind==="generation" && !["completed","failed","cancelled","ready","needs_review","published"].includes(j.status)).map(j=>j.leadId));
+    }catch{}};
+    void load();const timer=setInterval(load,5000);
+    return()=>{active=false;clearInterval(timer);};
+  },[refresh]);
   const updateLeadStatus = useCallback((id: string, callStatus: string, version: number) => {
     setLeads(current => current.map(lead => lead.id === id ? {...lead, callStatus, version} : lead));
   }, []);
