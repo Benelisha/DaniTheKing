@@ -116,11 +116,16 @@ export const pageSchema = z.object({
     .default("#184d47"),
 });
 export function parseJson(text: string): unknown {
-  const cleaned = text
-    .trim()
-    .replace(/^```(?:json)?\s*/, "")
-    .replace(/\s*```$/, "");
-  return JSON.parse(cleaned);
+  const cleaned = text.trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (error) {
+    // Grounded research can include prose around a fenced JSON response.
+    // Accept exactly one JSON block; never guess between multiple payloads.
+    const blocks = [...cleaned.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/g)];
+    if (blocks.length !== 1) throw error;
+    return JSON.parse(blocks[0][1]);
+  }
 }
 export const terminal = new Set([
   "ready",

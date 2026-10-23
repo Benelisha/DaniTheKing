@@ -3,7 +3,7 @@ import { getFunctions } from "firebase-admin/functions";
 import { getStorage } from "firebase-admin/storage";
 import { z } from "zod";
 import { db, settings, upsertLead } from "./store";
-import { leadSchema } from "./domain";
+import { discoveryCandidate } from "./discovery-result";
 import { identityFingerprint } from "./google-identity";
 import { gemini, managedSettings, parseJson } from "./gemini";
 import { publishManaged } from "./publishing";
@@ -269,7 +269,7 @@ export async function processManaged(id: string) {
       const c = job.discoverySettings;
       const r = await request(
         job,
-        `Find up to ${c.maxCandidates} real US home-service businesses for categories ${JSON.stringify(c.categories)} in ${JSON.stringify(c.locations)}. US ONLY. Return JSON {"leads":[{"businessName":"","phone":"US phone","service":"","location":"City, ST","sources":[{"url":"https://...","title":"","observedAt":"${now()}"}],"websiteStatus":"Not checked","websiteUrl":"","researchNotes":""}],"gaps":[]}. Every business requires a public source proving identity and phone; omit uncertain businesses. Prefer businesses without a good independent website.`,
+        `Find up to ${c.maxCandidates} real US home-service businesses for categories ${JSON.stringify(c.categories)} in ${JSON.stringify(c.locations)}. US ONLY. Return only JSON, without introductory prose: {"leads":[{"businessName":"","phone":"US phone","service":"","location":"City, ST","sources":[{"url":"https://...","title":"","observedAt":"${now()}"}],"websiteStatus":"Not checked","websiteUrl":"","researchNotes":""}],"gaps":[]}. Use empty strings, never null, for unknown websiteUrl and researchNotes. Website URLs must include https:// or http://. Every business requires a public source proving identity and phone; omit uncertain businesses. Prefer businesses without a good independent website.`,
         "research",
         "discovery",
       );
@@ -282,7 +282,7 @@ export async function processManaged(id: string) {
       const results = [];
       const rejected = [];
       for (const item of raw.leads) {
-        const parsed = leadSchema.safeParse(item);
+        const parsed = discoveryCandidate(item);
         if (!parsed.success) {
           rejected.push(
             "Candidate omitted: incomplete or invalid sourced business details",
