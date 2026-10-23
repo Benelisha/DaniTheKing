@@ -14,3 +14,10 @@ test('removed leads cannot serve published website content even if a document re
  t.mock.method(store,'db',()=>({doc:(p:string)=>({get:async()=>({exists:true,data:()=>p.startsWith('published')?{leadId:'a'.repeat(32)}:{removedAt:'2026-10-23'}})})}) as any);
  await assert.rejects(new PublicSitesController().website('removed-business'),/no longer available/);
 });
+
+test('broken or untrusted generated image URLs use a known stock fallback',async t=>{
+ const {checkedHeroImage}=await import('./studio-images');
+ t.mock.method(globalThis,'fetch',async()=>new Response('',{status:404}));
+ assert.match(await checkedHeroImage('https://images.unsplash.com/missing','Pool service'),/1576013551627/);
+ assert.match(await checkedHeroImage('https://localhost/private','Handyman'),/1600596542815/);
+});
