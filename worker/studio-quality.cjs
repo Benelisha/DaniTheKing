@@ -27,11 +27,40 @@ function collectVisualEvidence(){
  }
  return {colors:[...colors].sort((a,b)=>b[1]-a[1]).slice(0,80).map(([color])=>color),fonts:[...fonts].slice(0,20),cornerRadii:[...radii].slice(0,25),padding:[...spacing].slice(0,40),headings:Array.from(document.querySelectorAll('h1,h2,h3,nav a,button')).slice(0,100).map(el=>({text:el.textContent?.trim().slice(0,150),fontSize:getComputedStyle(el).fontSize,fontWeight:getComputedStyle(el).fontWeight}))};
 }
+// Solve the six renderer contrast constraints using observed colors only.
+// Keep a valid model palette unchanged; otherwise minimize RGB distance to its choices.
+function accessiblePalette(design,colors){
+ const pairs=[['onInk','ink'],['ink','background'],['ink','surface'],['onAccent','accent'],['accent','background'],['accent','surface']];
+ if(pairs.every(([a,b])=>contrast(design[a],design[b])>=4.5))return design;
+ const rgb=h=>h.slice(1).match(/../g).map(v=>parseInt(v,16));
+ const cost=Object.fromEntries(['ink','accent','background','surface','onInk','onAccent'].map(token=>{
+  const target=rgb(design[token]);return [token,colors.map(c=>rgb(c).reduce((sum,v,i)=>sum+(v-target[i])**2,0))];
+ }));
+ const ratios=colors.map(a=>colors.map(b=>contrast(a,b)));
+ const closest=(token,indices)=>indices.reduce((best,i)=>best<0||cost[token][i]<cost[token][best]?i:best,-1);
+ const partners=colors.map((_,i)=>colors.map((_,j)=>j).filter(j=>ratios[i][j]>=4.5));
+ const onInk=partners.map(indices=>closest('onInk',indices)),onAccent=partners.map(indices=>closest('onAccent',indices));
+ let best=null,bestCost=Infinity;
+ for(let ink=0;ink<colors.length;ink++){
+  if(onInk[ink]<0)continue;
+  for(let accent=0;accent<colors.length;accent++){
+   if(onAccent[accent]<0)continue;
+   const common=partners[ink].filter(i=>ratios[accent][i]>=4.5);if(!common.length)continue;
+   const background=closest('background',common),surface=closest('surface',common);
+   const choice={ink,accent,background,surface,onInk:onInk[ink],onAccent:onAccent[accent]};
+   const score=Object.entries(choice).reduce((sum,[token,i])=>sum+cost[token][i]*(token==='accent'?3:token==='ink'?2:1),0);
+   if(score<bestCost){bestCost=score;best=choice;}
+  }
+ }
+ if(!best)throw Error('Observed competitor colors cannot satisfy the renderer contrast requirements. Choose different references.');
+ return {...design,...Object.fromEntries(Object.entries(best).map(([token,i])=>[token,colors[i]])),rationale:(design.rationale||'')+' Foreground/background assignments were adjusted within the observed palette to meet all six 4.5:1 contrast checks.'};
+}
 function bindPalette(design,refs){
  const sources=refs.filter(r=>r.observed&&r.visualEvidence?.colors?.length).map(r=>({websiteUrl:r.websiteUrl,colors:r.visualEvidence.colors}));
  if(!sources.length)throw Error('No observed competitor palette available. Retry competitor inspection; colors will not be invented.');
  const allowed=new Set(sources.flatMap(s=>s.colors.map(c=>c.toLowerCase())));
  for(const token of ['accent','background','ink','surface','onAccent','onInk'])if(!design[token]||!allowed.has(design[token].toLowerCase()))throw Error(`Unsourced palette color: ${token}. Use only observed competitor colors.`);
+ design=accessiblePalette(design,[...allowed]);
  return {...design,paletteSources:sources.map(s=>({...s,colors:s.colors.filter(c=>['accent','background','ink','surface','onAccent','onInk'].some(k=>design[k].toLowerCase()===c.toLowerCase()))})).filter(s=>s.colors.length)};
 }
 function contrast(a,b){const lum=h=>{const v=h.slice(1).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return v[0]*.2126+v[1]*.7152+v[2]*.0722;};const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);}

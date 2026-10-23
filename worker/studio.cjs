@@ -10,11 +10,7 @@ function designSchemaFor(refs){
  const colors=[...new Set(refs.filter(r=>r.observed).flatMap(r=>r.visualEvidence?.colors||[]).map(c=>c.toLowerCase()))];
  if(!colors.length)throw Error('No observed competitor palette available. Retry competitor inspection.');
  const tokens=['accent','background','ink','surface','onAccent','onInk'];
- return sourcedDesignSchema.extend(Object.fromEntries(tokens.map(token=>[token,z.enum(colors).describe('Choose an exact observed competitor color. All foreground/background pairs must have contrast at least 4.5:1.')]))).superRefine((d,ctx)=>{
-  for(const [a,b] of [['onInk','ink'],['ink','background'],['ink','surface'],['onAccent','accent'],['accent','background'],['accent','surface']]){
-   const ratio=quality.contrast(d[a],d[b]);if(ratio<4.5)ctx.addIssue({code:'custom',path:[a],message:`${a}/${b} contrast is ${ratio.toFixed(2)}:1; choose observed colors with at least 4.5:1 contrast.`});
-  }
- });
+ return sourcedDesignSchema.extend(Object.fromEntries(tokens.map(token=>[token,z.enum(colors).describe('Choose an exact observed competitor color. Foreground/background pairs are checked by the renderer.')])));
 }
 const workerId=randomUUID();
 let db,hostedModel;
