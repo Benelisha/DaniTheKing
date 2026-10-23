@@ -90,6 +90,7 @@ function Workspace() {
     wide = width > 1050;
   const [page, setPage] = useState(workspacePage),
     [navigationOpen, setNavigationOpen] = useState(false),
+    [importOpen, setImportOpen] = useState(false),
     [leads, setLeads] = useState<Lead[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -216,7 +217,7 @@ function Workspace() {
               {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
               <View style={[s.card, { padding: 0, gap: 0, overflow: "hidden" }]}>
                 <View style={{ padding: 20, gap: 12 }}>
-
+                  <Button label="Import researched businesses" icon="upload" onPress={() => setImportOpen(true)} />
                   <Field placeholder="Search name, address, phone, Instagram, Facebook, websites…" value={query} onChangeText={setQuery} />
                   <View style={[s.row, {flexWrap:"wrap",gap:12}]}>
                     <View style={{flex:1,minWidth:180}}><FilterSelect label="Platform" values={["All platforms", ...presencePlatforms]} value={platformFilter} onChange={setPlatformFilter} /></View>
@@ -352,6 +353,9 @@ function Workspace() {
           )}
         </ScrollView>
       </View>
+      <Modal visible={importOpen} animationType="slide" onRequestClose={() => setImportOpen(false)}>
+        <ImportLeads close={() => setImportOpen(false)} refresh={refresh} />
+      </Modal>
       <Modal
         transparent
         visible={!!selected}
