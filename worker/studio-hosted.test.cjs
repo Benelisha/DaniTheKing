@@ -22,7 +22,7 @@ test('an active lease prevents another hosted delivery from running',async()=>{
 });
 test('comparison identities and availability come from selected sources rather than model URLs',()=>{
  const {comparisonModelSchema,bindComparisons}=require('./studio.cjs');const examples=Array.from({length:5},(_,i)=>({websiteUrl:`https://source${i}.com`}));
- const report={summary:'A report grounded in selected browser evidence.',scores:{design:90,content:90,ux:90},comparisons:Object.fromEntries(examples.map((_,i)=>[`competitor${i+1}`,{websiteUrl:'https://wrong.example',observed:true,strengthsMatched:['Clear navigation'],remainingGaps:[]}])),sectionChecks:Array.from({length:5},(_,i)=>({id:'section'+i,passed:true,notes:'Checked'})),changes:[],blockers:[],ready:true};
+ const report={factualIssues:[],summary:'A report grounded in selected browser evidence.',scores:{design:90,content:90,ux:90},comparisons:Object.fromEntries(examples.map((_,i)=>[`competitor${i+1}`,{websiteUrl:'https://wrong.example',observed:true,strengthsMatched:['Clear navigation'],remainingGaps:[],nonBlockingDifferences:[]}])),sectionChecks:Array.from({length:5},(_,i)=>({id:'section'+i,passed:true,notes:'Checked'})),changes:[],blockers:[],ready:true};
  const parsed=comparisonModelSchema(examples).parse(report),bound=bindComparisons(parsed,examples,examples.map((e,i)=>({...e,observed:i<3})));
  assert.deepEqual(bound.comparisons.map(v=>v.websiteUrl),examples.map(v=>v.websiteUrl));assert.deepEqual(bound.comparisons.map(v=>v.observed),[true,true,true,false,false]);assert.deepEqual(bound.comparisons[4].strengthsMatched,[]);assert.ok(bound.comparisons[4].remainingGaps.length);assert.ok(!('websiteUrl' in parsed.comparisons.competitor1));
  delete report.comparisons.competitor5;assert.throws(()=>comparisonModelSchema(examples).parse(report));
@@ -47,4 +47,13 @@ test('model design schema permits only observed colors and palette binding repai
  for(const token of ['accent','background','ink','surface','onAccent','onInk'])assert.ok(colors.includes(repaired[token]));
  assert.throws(()=>quality.bindPalette({...d,accent:'#ffffff',background:'#ffffff',ink:'#ffffff',surface:'#ffffff',onAccent:'#ffffff',onInk:'#ffffff'},[{observed:true,websiteUrl:'https://reference.example',visualEvidence:{colors:['#ffffff']}}]),/cannot satisfy/);
  const json=require('zod').z.toJSONSchema(schema);assert.deepEqual(json.properties.accent.enum,colors);
+});
+test('comparison model must provide factual audit and explain nonblocking differences without erasing defects',()=>{
+ const {comparisonModelSchema,bindComparisons}=require('./studio.cjs');const examples=Array.from({length:5},(_,i)=>({websiteUrl:`https://source${i}.com`}));
+ const row={strengthsMatched:['A working phone inquiry'],remainingGaps:['Headline is clipped on mobile'],nonBlockingDifferences:[{detail:'Competitor displays a licensing claim',reason:'unverified_business_fact',rationale:'The supplied business facts do not establish any license, so the website must omit that claim.'}]};
+ const report={factualIssues:[],summary:'A factual browser-grounded comparison report.',scores:{design:80,content:90,ux:80},comparisons:Object.fromEntries(examples.map((_,i)=>[`competitor${i+1}`,row])),sectionChecks:[{id:'services',passed:true,notes:'Checked'},{id:'contact',passed:true,notes:'Checked'}],changes:[],blockers:['Fix mobile clipping'],ready:false};
+ const schema=comparisonModelSchema(examples),bound=bindComparisons(schema.parse(report),examples,examples.map(e=>({...e,observed:true})));
+ assert.equal(bound.comparisons[0].nonBlockingDifferences[0].reason,'unverified_business_fact');assert.deepEqual(bound.comparisons[0].remainingGaps,['Headline is clipped on mobile']);
+ const {factualIssues,...withoutAudit}=report;assert.equal(schema.safeParse(withoutAudit).success,false);
+ assert.equal(schema.safeParse({...report,comparisons:{...report.comparisons,competitor1:{...row,nonBlockingDifferences:[{detail:'Unsupported claim',reason:'just_ignore_it',rationale:'Ignore a real defect to pass the review'}]}}}).success,false);
 });

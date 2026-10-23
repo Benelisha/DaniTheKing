@@ -67,3 +67,17 @@ test('server asset binding preserves valid sections and removes references to no
  const content={headline:'Home repairs in Phoenix',intro:'Discuss your home repair needs.',imageUrl:'https://example.com/placeholder',services:[{title:'Home repairs',description:'Discuss the repairs you need.'}],about:'Local home repair services.',cta:'Call us',sections:[{id:'about',kind:'about',title:'About us',eyebrow:'',body:'Local home repair services.',items:[],imageIndex:2},{id:'services',kind:'services',title:'Services',eyebrow:'',body:'Home repairs.',items:[],imageIndex:1}]};
  const bound=bindContentAssets(content,assets);assert.equal(bound.sections[0].imageIndex,null);assert.equal(bound.sections[1].imageIndex,1);assert.equal(bound.imageUrl,assets[0].url);assert.deepEqual(bound.assets,assets);assert.equal(content.sections[0].imageIndex,2);
 });
+test('honest business differences do not require invented reviews, credentials or features',()=>{
+ const draft:any=reviewedDraft();
+ draft.review.factualIssues=[];
+ draft.review.comparisons[0].nonBlockingDifferences=[{detail:'Verified customer testimonials are not supplied',reason:'unavailable_business_asset',rationale:'The supplied business has no verified review quotes. The site links to its actual business profile instead.'},{detail:'Competitor financing and memberships',reason:'outside_supported_scope',rationale:'This website offers direct telephone inquiries; financing and membership products are not part of the supplied business facts.'}];
+ assert.doesNotThrow(()=>assertReviewReady(draft));
+ draft.review.comparisons[0].remainingGaps=['The supplied telephone number is not reachable from the primary CTA'];
+ assert.throws(()=>assertReviewReady(draft),/unresolved gaps/);
+});
+test('a passing model verdict cannot override a factual issue or fabricated business claim',()=>{
+ const draft:any=reviewedDraft();draft.review.factualIssues=['The FAQ promises same-day service without supporting business facts'];
+ assert.throws(()=>assertReviewReady(draft),/Unsupported business claims/);
+ draft.review.factualIssues=[];draft.review.scores.content=84;
+ assert.throws(()=>assertReviewReady(draft),/unresolved gaps/);
+});
