@@ -205,7 +205,7 @@ export const DEFAULT_SETTINGS: z.infer<typeof settingsSchema> = {
   times: ["09:00", "13:00", "17:00"],
   timeZone: "America/New_York",
   categories: CATEGORIES.slice(0, 5),
-  locations: ["Miami-Dade County, FL"],
+  locations: ["Miami-Dade County, FL", "Palm Beach County, FL", "Broward County, FL"],
   maxCandidates: 20,
 };
 export function normalizePhone(input: string): string | null {
