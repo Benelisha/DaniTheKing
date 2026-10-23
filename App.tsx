@@ -160,6 +160,7 @@ function Workspace() {
     void load();const timer=setInterval(load,5000);
     return()=>{active=false;clearInterval(timer);};
   },[refresh]);
+  useEffect(()=>{if(typeof window==='undefined')return;const focus=()=>void refresh();window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);},[refresh]);
   const updateLeadStatus = useCallback((id: string, callStatus: string, version: number) => {
     setLeads(current => current.map(lead => lead.id === id ? {...lead, callStatus, version} : lead));
   }, []);
@@ -322,7 +323,8 @@ function Workspace() {
                         </Text>
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
-                        <Badge text={l.websiteStatus} />
+                        <Badge text={l.generatedWebsiteUrl ? "Website live" : l.websiteStatus} />
+                        {!!l.generatedWebsiteUrl && <Text style={{fontSize:10,color:colors.muted}}>Original site: {l.websiteStatus}</Text>}
                         <Text style={{ fontSize: 10, color: colors.muted }}>
                           {l.websiteCheckedAt
                             ? `Checked ${new Date(l.websiteCheckedAt).toLocaleDateString(undefined, { timeZone: "UTC" })}`
@@ -336,7 +338,7 @@ function Workspace() {
                         <WebsiteStudioButton lead={l} refresh={refresh} />
                       </View>
                       <View style={styles.col}>
-                        {l.generatedWebsiteUrl ? <ExternalLink compact url={l.generatedWebsiteUrl} label={l.generatedWebsiteUrl} /> : <Text style={s.body}>—</Text>}
+                        {l.generatedWebsiteUrl ? <ExternalLink compact url={l.generatedWebsiteUrl} label={l.generatedWebsiteUrl.replace("https://", "")} /> : <Text style={s.body}>—</Text>}
                       </View>
                     </Pressable>
                   ))

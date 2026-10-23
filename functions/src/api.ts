@@ -106,8 +106,9 @@ class BackOfficeController {
       if (!snap.exists) throw new HttpException("Lead not found",404);
       if (snap.data()!.version !== expectedVersion) throw new HttpException("Lead changed. Refresh and retry.",409);
       const at = new Date().toISOString();
+      const sites=await tx.get(db().collection('publishedWebsites').where('leadId','==',id));
       tx.update(ref,{removedAt:at,removedBy:req.actor,version:expectedVersion+1,generatedWebsiteUrl:""});
-      if(snap.data()!.websiteSlug)tx.delete(db().doc(`publishedWebsites/${snap.data()!.websiteSlug}`));
+      for(const site of sites.docs)tx.delete(site.ref);
       tx.create(db().collection("websiteCleanupHistory").doc(),{leadId:id,at,actor:req.actor,status:"completed",slug:snap.data()!.websiteSlug||null});
     });
     return {removed:true};
@@ -277,7 +278,7 @@ export function createApi(configure?: (server: express.Express) => void) {
       origin: [
         "https://daniboy-be1c0.web.app",
         "https://daniboy-be1c0.firebaseapp.com",
-        "https://daniboy-be1c0-prospects.web.app",
+        "https://daniboy-be1c0-prospects.web.app","https://dnby.web.app","https://dnby.firebaseapp.com",
         "https://daniboy-be1c0-prospects.firebaseapp.com",
         ...(process.env.FUNCTIONS_EMULATOR === "true"
           ? ["http://localhost:8081"]
