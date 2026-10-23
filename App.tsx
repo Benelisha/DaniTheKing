@@ -1,3 +1,4 @@
+import {ManagedJobs,ManagedSettings} from "./src/Managed";
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -94,6 +95,7 @@ function Workspace() {
     [sort, setSort] = useState("Newest first"),
     [query, setQuery] = useState(""),
     [platformFilter, setPlatformFilter] = useState("All platforms"),
+    [followUpFilter,setFollowUpFilter]=useState(false),
     [presenceFilter, setPresenceFilter] = useState("All findings"),
     [selectedId, setSelectedId] = useState<string | null>(leadIdFromPath);
   const selected = leads.find(lead => lead.id === selectedId) || null;
@@ -149,7 +151,7 @@ function Workspace() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  const sortedLeads = leads.filter(l => matchesLead(l, query) && onlinePresence(l).some(p => (platformFilter === "All platforms" || p.platform === platformFilter) && (presenceFilter === "All findings" || p.status === presenceFilter))).sort((a, b) => sort === "Business A–Z"
+  const sortedLeads = leads.filter(l => (!followUpFilter || (!!l.nextFollowUpAt && l.nextFollowUpAt <= new Date().toISOString())) && matchesLead(l, query) && onlinePresence(l).some(p => (platformFilter === "All platforms" || p.platform === platformFilter) && (presenceFilter === "All findings" || p.status === presenceFilter))).sort((a, b) => sort === "Business A–Z"
     ? a.businessName.localeCompare(b.businessName)
     : sort === "Fewest examples" ? (a.competitors?.length || 0) - (b.competitors?.length || 0)
     : (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -205,7 +207,7 @@ function Workspace() {
                   <View style={[s.row, {flexWrap:"wrap",gap:12}]}>
                     <View style={{flex:1,minWidth:180}}><FilterSelect label="Platform" values={["All platforms", ...presencePlatforms]} value={platformFilter} onChange={setPlatformFilter} /></View>
                     <View style={{flex:1,minWidth:180}}><FilterSelect label="Finding" values={["All findings", "Found", "Not found", "Not checked"]} value={presenceFilter} onChange={setPresenceFilter} /></View>
-                    <Button subtle label="Clear search & filters" onPress={()=>{setQuery("");setPlatformFilter("All platforms");setPresenceFilter("All findings");}} />
+                    <Button subtle label={followUpFilter?"Show all follow-ups":"Follow-ups due"} onPress={()=>setFollowUpFilter(!followUpFilter)}/><Button subtle label="Clear search & filters" onPress={()=>{setQuery("");setFollowUpFilter(false);setPlatformFilter("All platforms");setPresenceFilter("All findings");}} />
                   </View>
                   <View style={{ width: wide ? 220 : "100%" }}>
                     <FilterSelect label="Sort" values={["Newest first", "Business A–Z", "Fewest examples"]} value={sort} onChange={setSort} />
@@ -316,7 +318,7 @@ function Workspace() {
                         <Badge text={l.callStatus} />
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
-                        <GenerationControls lead={l} refresh={refresh}/>
+                        <Text style={s.body}>Open the business to research or generate with Gemini.</Text>
                       </View>
                     </Pressable>
                   ))
@@ -487,7 +489,7 @@ function LeadDetail({
       </View>
       <ContentEditor key={`${lead.id}:${lead.version}`} lead={lead} refresh={refresh} />
       <DetailSection title="Generated website">
-        <GenerationControls lead={lead} refresh={refresh}/>
+        <ManagedJobs lead={lead} refresh={refresh}/>
       </DetailSection>
       <DetailSection title={`Business examples · ${lead.competitors?.length || 0}`}>
         {lead.competitors?.map((competitor, i) => <View key={i} style={{gap:6}}>
@@ -779,13 +781,14 @@ function Discovery({
   }
   return (
     <>
+      <ManagedJobs refresh={refresh}/>
+      <ManagedSettings/>
       <View style={[s.card, { gap: 20 }]}>
         <View style={[s.row, { justifyContent: "space-between" }]}>
           <View style={{ gap: 7 }}>
-            <Text style={s.h2}>Manual Google Maps research</Text>
+            <Text style={s.h2}>Discovery settings</Text>
             <Text style={s.body}>
-              Automated discovery is disabled. Verify actual Google Maps listings
-              before adding businesses to the working list.
+              Save US locations and categories, then use Find businesses. Review discovered leads before generating.
             </Text>
           </View>
           <Switch

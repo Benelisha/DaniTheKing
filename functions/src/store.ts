@@ -86,7 +86,7 @@ export async function upsertLead(input: LeadInput, actor: string, skipExisting =
 }
 export async function updateLead(
   id: string,
-  patch: { callStatus?: string; note?: string; expectedVersion: number },
+  patch: { callStatus?: string; note?: string; nextFollowUpAt?: string|null; expectedVersion: number },
   actor: string,
 ) {
   const ref = db().doc(`leads/${id}`);
@@ -102,6 +102,7 @@ export async function updateLead(
     const now = new Date().toISOString();
     tx.update(ref, {
       ...(patch.callStatus ? { callStatus: patch.callStatus } : {}),
+      ...(patch.nextFollowUpAt !== undefined ? {nextFollowUpAt:patch.nextFollowUpAt} : {}),
       updatedAt: now,
       version: patch.expectedVersion + 1,
     });

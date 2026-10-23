@@ -1,4 +1,7 @@
 import "reflect-metadata";
+import {AccessGuard} from "./access";
+export {AccessGuard} from "./access";
+import {ManagedController} from "./managed-api";
 import {
   Body,
   CanActivate,
@@ -39,26 +42,6 @@ import {
 import { db, settings, updateLead, upsertLead } from "./store";
 import { integrationStatus, runDiscovery } from "./discovery";
 type AuthRequest = Request & { actor: string };
-@Injectable()
-export class AccessGuard implements CanActivate {
-  async canActivate(context: ExecutionContext) {
-    const req = context.switchToHttp().getRequest<AuthRequest>();
-    const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
-    if (!token) throw new UnauthorizedException("Sign in to access DaniBoy.");
-    let user;
-    try {
-      user = await getAuth().verifyIdToken(token, true);
-    } catch {
-      throw new UnauthorizedException("Your session expired. Sign in again.");
-    }
-    if (!authorizedEmail(user.email, user.email_verified))
-      throw new ForbiddenException(
-        "This verified email is not on the DaniBoy whitelist.",
-      );
-    req.actor = user.email!.toLowerCase();
-    return true;
-  }
-}
 @Catch()
 class ApiErrors implements ExceptionFilter {
   catch(error: unknown, host: ArgumentsHost) {
@@ -259,7 +242,7 @@ class BackOfficeController {
       throw new HttpException("Invalid lead ID", 400);
   }
 }
-@Module({ controllers: [BackOfficeController], providers: [AccessGuard] })
+@Module({ controllers: [BackOfficeController, ManagedController], providers: [AccessGuard] })
 class BackOfficeModule {}
 let serverPromise: Promise<express.Express> | undefined;
 export function createApi(configure?: (server: express.Express) => void) {
@@ -267,7 +250,7 @@ export function createApi(configure?: (server: express.Express) => void) {
     const server = express();
     configure?.(server);
     server.disable("x-powered-by");
-    server.use(express.json({ limit: "512kb" }));
+    server.use(express.json({ limit: "12mb" }));
     const app = await NestFactory.create(
       BackOfficeModule,
       new ExpressAdapter(server),

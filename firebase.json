@@ -4,8 +4,15 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "nodejs22",
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"],
-      "ignore": ["node_modules", ".git", "*.log", "src/*.test.ts"]
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.log",
+        "src/*.test.ts"
+      ]
     }
   ],
   "firestore": {
@@ -15,7 +22,10 @@
   "hosting": {
     "site": "daniboy-be1c0",
     "public": "dist",
-    "ignore": ["firebase.json", "**/.*"],
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
     "rewrites": [
       {
         "source": "/api/**",
@@ -63,5 +73,8 @@
       "enabled": false
     },
     "singleProjectMode": true
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }

@@ -1,5 +1,7 @@
 export type Lead = {
   id: string;
+  nextFollowUpAt?: string|null;
+  generationBrief?: Record<string,string>;
   businessName: string;
   alternateNames: string[];
   phone: string;

@@ -174,11 +174,12 @@ export type LeadInput = z.infer<typeof leadSchema>;
 export const patchSchema = z
   .object({
     callStatus: z.enum(CALL_STATUSES).optional(),
+    nextFollowUpAt: z.union([z.iso.datetime(),z.null()]).optional(),
     note: z.string().trim().min(1).max(5000).optional(),
     expectedVersion: z.number().int().min(1),
   })
   .strict()
-  .refine((v) => v.callStatus || v.note, "Provide a status or note");
+  .refine((v) => v.callStatus || v.note || v.nextFollowUpAt !== undefined, "Provide a status or note");
 export const settingsSchema = z
   .object({
     enabled: z.boolean(),
@@ -211,7 +212,7 @@ export const DEFAULT_SETTINGS: z.infer<typeof settingsSchema> = {
     "Austin, TX",
     "Columbus, OH",
   ],
-  maxCandidates: 8,
+  maxCandidates: 20,
 };
 export function normalizePhone(input: string): string | null {
   const digits = input.replace(/\D/g, "");
