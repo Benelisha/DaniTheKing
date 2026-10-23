@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {hosted}=require('./studio.cjs');
 function database(revision=0){
  const rows=new Map([['siteJobs/test',{stage:'design',status:'queued',leadId:'lead',revision:0,actor:'test'}],['websiteStudios/lead',{revision,draft:{}}],['leads/lead',{businessName:'Test pool care',service:'Pool cleaning',location:'Phoenix',phone:'+16025550123'}]]);
- const doc=p=>({id:p.split('/').at(-1),get:async()=>({exists:rows.has(p),data:()=>rows.get(p)}),collection:()=>({doc:()=>doc('history/test')}),p});
+ const doc=p=>({id:p.split('/').at(-1),update:async v=>rows.set(p,{...rows.get(p),...v}),get:async()=>({exists:rows.has(p),data:()=>rows.get(p)}),collection:name=>({doc:id=>doc(`${p}/${name}/${id||'test'}`)}),p});
  const tx={get:r=>r.get(),set:(r,v)=>rows.set(r.p,v),update:(r,v)=>rows.set(r.p,{...rows.get(r.p),...v}),delete:r=>rows.delete(r.p),create:(r,v)=>rows.set(r.p,v)};
  return {rows,doc,runTransaction:fn=>fn(tx)};
 }
@@ -24,4 +24,10 @@ test('comparison identities and availability come from selected sources rather t
  const parsed=comparisonModelSchema(examples).parse(report),bound=bindComparisons(parsed,examples,examples.map((e,i)=>({...e,observed:i<3})));
  assert.deepEqual(bound.comparisons.map(v=>v.websiteUrl),examples.map(v=>v.websiteUrl));assert.deepEqual(bound.comparisons.map(v=>v.observed),[true,true,true,false,false]);assert.deepEqual(bound.comparisons[4].strengthsMatched,[]);assert.ok(bound.comparisons[4].remainingGaps.length);assert.ok(!('websiteUrl' in parsed.comparisons.competitor1));
  delete report.comparisons.competitor5;assert.throws(()=>comparisonModelSchema(examples).parse(report));
+});
+
+test('failed revision jobs retain the request and mark it failed',async()=>{
+ const db=database(2);db.rows.get('siteJobs/test').requestId='request';db.rows.set('websiteStudios/lead/revisionRequests/request',{number:1,status:'queued',instructions:'Make the headline smaller.'});
+ await hosted(db,'test',()=>{throw Error('Must not call model');});
+ assert.equal(db.rows.get('siteJobs/test').status,'failed');const request=db.rows.get('websiteStudios/lead/revisionRequests/request');assert.equal(request.status,'failed');assert.equal(request.number,1);assert.match(request.error,/draft changed/);
 });

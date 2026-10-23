@@ -7,11 +7,15 @@ export async function managedSettings() {
     (await db().doc("settings/managed").get()).data() || {},
   );
 }
+export function studioTextOptions(model:string,maxOutputTokens=32768):{maxOutputTokens:number;thinkingConfig?:{thinkingBudget?:number;thinkingLevel?:string}}{
+ return {maxOutputTokens,...(/^gemini-2\.5(?:-|$)/.test(model)?{thinkingConfig:{thinkingBudget:2048}}:/^gemini-[34](?:[.-]|$)/.test(model)?{thinkingConfig:{thinkingLevel:'low'}}:{})};
+}
 export async function gemini(
   prompt: string,
   config: Awaited<ReturnType<typeof managedSettings>>,
   mode: "research" | "text" | "image" = "text",
   additionalParts: {inlineData:{mimeType:string;data:string}}[] = [],
+  options: {studio?:boolean;maxOutputTokens?:number} = {},
 ) {
   const key = geminiKey.value();
   if (!key) throw Error("Gemini key is not configured");
@@ -34,7 +38,7 @@ export async function gemini(
       mode === "image"
         ? { responseModalities: ["TEXT", "IMAGE"] }
         : {
-            maxOutputTokens: 16000,
+            ...(mode==='text'&&options.studio?studioTextOptions(model,options.maxOutputTokens):{maxOutputTokens:16000}),
             ...(mode === "text"
               ? { responseMimeType: "application/json" }
               : {}),
@@ -55,8 +59,12 @@ export async function gemini(
     );
   const response = (await r.json()) as any;
   const candidate = response.candidates?.[0];
-  if (!candidate || candidate.finishReason !== "STOP")
-    throw Error("Gemini response was incomplete or blocked");
+  if (!candidate || candidate.finishReason !== "STOP"){
+    const finishReason=candidate?.finishReason||response.promptFeedback?.blockReason||'NO_CANDIDATE';
+    const usage=response.usageMetadata||{};
+    console.warn('Gemini generation stopped',{model,finishReason,promptTokenCount:usage.promptTokenCount||0,outputTokenCount:usage.candidatesTokenCount||0,thinkingTokenCount:usage.thoughtsTokenCount||0});
+    throw Object.assign(Error(finishReason==='MAX_TOKENS'?'Gemini reached its output limit. Retry the studio step.':`Gemini response was incomplete or blocked (${finishReason})`),{finishReason});
+  }
   const parts = candidate.content?.parts || [];
   return {
     text: parts

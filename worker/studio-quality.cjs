@@ -31,12 +31,19 @@ async function capture(browser,site,dir,label='candidate'){
   const contact=page.locator('#contact');let contactPassed=await contact.count()>0;
   const primary=page.getByRole('button',{name:site.content.cta+' ↗',exact:true}).first();
   if(await primary.count()){await primary.click();try{await page.waitForFunction(()=>{const el=document.getElementById('contact');if(!el)return false;const r=el.getBoundingClientRect();return r.top<window.innerHeight&&r.bottom>0;},null,{timeout:5000});}catch{contactPassed=false;}}else contactPassed=false;
+  const serviceButtons=page.getByRole('button',{name:site.content.services[0]?.title,exact:true});let serviceSelectionPassed=false;
+  if(await serviceButtons.count()){await serviceButtons.first().click();try{await page.waitForFunction(service=>document.getElementById('contact')?.textContent.includes('Let’s discuss '+service),site.content.services[0].title,{timeout:3000});serviceSelectionPassed=true;}catch{serviceSelectionPassed=false;}}
+  const contactLayoutPassed=await page.evaluate(()=>{
+   const inquiry=document.querySelector('[id$="-inquiry"]'),details=document.querySelector('[id$="-details"]');
+   if(!inquiry||!details)return false;const a=inquiry.getBoundingClientRect(),b=details.getBoundingClientRect();
+   return a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top;
+  });
   const missingSections=(site.blueprint?.sections||[]).filter(s=>!measured.sections.includes(s.id)).map(s=>s.id);
   await page.locator('#hero').evaluate(el=>el.scrollIntoView());
   // Expand scroll ancestors only for a full-length artifact, after measuring real viewport layout.
   await page.evaluate(()=>{let el=document.getElementById('site-content')?.parentElement;while(el){el.style.overflow='visible';el.style.height='auto';el.style.maxHeight='none';el=el.parentElement;}});
   const screenshot=path.join(dir,`${label}-${name}.png`);await page.screenshot({path:screenshot,fullPage:true,timeout:30000});screens.push(screenshot);
-  checks.push({viewport:name,width,brokenImages:measured.brokenImages,overflow:measured.overflow,errors,faqPassed,contactPassed,missingSections,headings:measured.headings,sections:measured.sections,text:measured.text?.slice(0,25000),passed:!errors.length&&!measured.brokenImages&&!measured.overflow&&faqPassed&&contactPassed&&!missingSections.length});await context.close();
+  checks.push({viewport:name,width,brokenImages:measured.brokenImages,overflow:measured.overflow,errors,faqPassed,contactPassed,serviceSelectionPassed,contactLayoutPassed,missingSections,headings:measured.headings,sections:measured.sections,text:measured.text?.slice(0,25000),passed:!errors.length&&!measured.brokenImages&&!measured.overflow&&faqPassed&&contactPassed&&serviceSelectionPassed&&contactLayoutPassed&&!missingSections.length});await context.close();
  }}finally{await new Promise(r=>server.close(r));}
  const colors={inkWhite:contrast(site.design.ink,'#ffffff'),inkBackground:contrast(site.design.ink,site.design.background),whiteAccent:contrast('#ffffff',site.design.accent),accentBackground:contrast(site.design.accent,site.design.background)};
  const result={passed:checks.every(c=>c.passed)&&Object.values(colors).every(v=>v>=4.5),colors,viewports:checks};await fs.writeFile(path.join(dir,`${label}-checks.json`),JSON.stringify(result,null,2));return {checks:result,screens};

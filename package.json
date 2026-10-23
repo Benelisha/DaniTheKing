@@ -18,7 +18,8 @@
     "test:worker": "node --test worker/*.test.cjs",
     "build:websites": "cd websites && expo export --platform web --clear",
     "worker:studio": "npm run build -w functions && node worker/studio.cjs",
-    "worker:studio:install": "npm run build -w functions && node scripts/install-studio-worker.cjs"
+    "worker:studio:install": "npm run build -w functions && node scripts/install-studio-worker.cjs",
+    "test:studio": "node worker/studio-render-smoke.cjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

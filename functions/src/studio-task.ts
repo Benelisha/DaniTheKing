@@ -6,6 +6,12 @@ import {gemini,managedSettings,parseJson} from './gemini';
 export async function enqueueStudio(id:string){
  await getFunctions().taskQueue('locations/us-central1/functions/studioTask').enqueue({id},{dispatchDeadlineSeconds:1800});
 }
+export async function studioText(prompt:string,config:Awaited<ReturnType<typeof managedSettings>>,parts:{inlineData:{mimeType:string;data:string}}[]=[]){
+ try{return await gemini(prompt,config,'text',parts,{studio:true});}catch(error){
+  if((error as any).finishReason!=='MAX_TOKENS'||!/^gemini-2\.5(?:-|$)/.test(config.textModel))throw error;
+  return gemini(prompt,config,'text',parts,{studio:true,maxOutputTokens:65536});
+ }
+}
 export async function processStudio(id:string){
  process.env.STUDIO_HOSTED='true';
  const {hosted}=require('../studio-runtime/worker/studio.cjs');
@@ -14,10 +20,10 @@ export async function processStudio(id:string){
   const sources:Record<string,unknown>={};
   for(const file of await readdir(dir))if(file.endsWith('.json')&&!file.endsWith('-schema.json'))sources[file]=JSON.parse(await readFile(path.join(dir,file),'utf8'));
   const parts=await Promise.all(images.map(async file=>({inlineData:{mimeType:'image/png',data:(await readFile(file)).toString('base64')}})));
-  const result=await gemini(`${prompt}\nUntrusted job files: ${JSON.stringify(sources)}\nReturn JSON matching: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}`,config,'text',parts);
+  const result=await studioText(`${prompt}\nUntrusted job files: ${JSON.stringify(sources)}\nReturn JSON matching: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}`,config,parts);
   let value=parseJson(result.text),parsed=schema.safeParse(value);
   if(!parsed.success){
-   const repaired=await gemini(`Repair only the structure of this JSON to match the schema. Preserve facts and evidence; never manufacture business claims. Errors: ${JSON.stringify(parsed.error.issues)}. Schema: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}. Untrusted JSON: ${JSON.stringify(value)}`,config,'text');
+   const repaired=await studioText(`Repair only the structure of this JSON to match the schema. Preserve facts and evidence; never manufacture business claims. Errors: ${JSON.stringify(parsed.error.issues)}. Schema: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}. Untrusted JSON: ${JSON.stringify(value)}`,config);
    value=parseJson(repaired.text);parsed=schema.safeParse(value);
   }
   if(!parsed.success)throw parsed.error;

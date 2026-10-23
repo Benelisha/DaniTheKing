@@ -40,12 +40,14 @@ export function Button({
   label,
   onPress,
   subtle = false,
+  danger = false,
   disabled = false,
   icon,
 }: {
   label: string;
   onPress: () => void;
   subtle?: boolean;
+  danger?: boolean;
   disabled?: boolean;
   icon?: React.ComponentProps<typeof Feather>["name"];
 }) {
@@ -58,6 +60,7 @@ export function Button({
       style={({ hovered }: any) => [
         s.button,
         subtle && s.subtle,
+        danger && { backgroundColor: "#b42318" },
         disabled && { opacity: 0.45 },
         hovered && { opacity: 0.8 },
       ]}
