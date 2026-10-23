@@ -54,7 +54,7 @@ async function generateOnce(
       mode === "image"
         ? { responseModalities: ["TEXT", "IMAGE"] }
         : {
-            ...(mode==='text'&&options.studio?studioTextOptions(model,options.maxOutputTokens):{maxOutputTokens:16000}),
+            ...(options.studio?studioTextOptions(model,options.maxOutputTokens):{maxOutputTokens:16000}),
             ...(mode === "text"
               ? { responseMimeType: "application/json" }
               : {}),

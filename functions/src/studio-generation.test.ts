@@ -52,3 +52,16 @@ test('safety, missing candidates and image recitation are not retried',async t=>
   await assert.rejects(provider.gemini('prompt',managedSettingsSchema.parse({}),mode));assert.equal(calls,1);mock.mock.restore();
  }
 });
+test('studio discovery has a bounded thinking budget, grounding tools and a larger output cap',async t=>{
+ t.mock.method(provider.geminiKey,'value',()=> 'test-key');const requests:any[]=[];
+ t.mock.method(globalThis,'fetch',async(_url:any,init:any)=>{requests.push(JSON.parse(init.body));return new Response(JSON.stringify({candidates:[{finishReason:'STOP',content:{parts:[{text:'[]'}]}}]}));});
+ await studioText('Find five websites',managedSettingsSchema.parse({}),[],'research');
+ assert.equal(requests[0].generationConfig.thinkingConfig.thinkingBudget,2048);
+ assert.equal(requests[0].generationConfig.maxOutputTokens,32768);assert.ok(requests[0].tools.length);
+ assert.equal(requests[0].generationConfig.responseMimeType,undefined);
+});
+test('studio discovery retries token exhaustion in research mode',async t=>{
+ const calls:any[]=[];t.mock.method(provider,'gemini',async(_prompt:any,_config:any,mode:any,_parts:any,options:any)=>{calls.push({mode,cap:options.maxOutputTokens});if(calls.length===1)throw Object.assign(Error('output limit'),{finishReason:'MAX_TOKENS'});return {text:'[]'} as any;});
+ await studioText('Find five websites',managedSettingsSchema.parse({}),[],'research');
+ assert.deepEqual(calls,[{mode:'research',cap:undefined},{mode:'research',cap:65536}]);
+});

@@ -55,3 +55,11 @@ test('blueprint receives browser screenshots and cannot claim inaccessible sourc
  assert.equal(records.get(`siteJobs/${jobId}`).status,'failed');assert.match(records.get(`siteJobs/${jobId}`).error,/inaccessible competitor/);
  assert.equal(records.get(`websiteStudios/${id}`).draft.blueprint,undefined);
 });
+test('discovery reuses verified existing competitor records before spending on model search',async t=>{
+ const {records,prompts}=fixture(t);
+ const lead={businessName:'Handy Guys',service:'Handyman',location:'FL',phone:'5555555555'};
+ t.mock.method(SitesController.prototype,'read',async()=>({...records.get(`websiteStudios/${id}`),business:facts(lead),referenceCandidates:examples.map(e=>({...e,verificationNotes:e.notes}))}));
+ await processStudioResearch(jobId);
+ assert.equal(prompts.length,0);assert.equal(records.get(`siteJobs/${jobId}`).status,'completed');
+ assert.deepEqual(records.get(`websiteStudios/${id}`).draft.examples,examples);
+});

@@ -6,10 +6,10 @@ import {gemini,managedSettings,parseJson} from './gemini';
 export async function enqueueStudio(id:string){
  await getFunctions().taskQueue('locations/us-central1/functions/studioTask').enqueue({id},{dispatchDeadlineSeconds:1800});
 }
-export async function studioText(prompt:string,config:Awaited<ReturnType<typeof managedSettings>>,parts:{inlineData:{mimeType:string;data:string}}[]=[]){
- try{return await gemini(prompt,config,'text',parts,{studio:true});}catch(error){
+export async function studioText(prompt:string,config:Awaited<ReturnType<typeof managedSettings>>,parts:{inlineData:{mimeType:string;data:string}}[]=[],mode:'text'|'research'='text'){
+ try{return await gemini(prompt,config,mode,parts,{studio:true});}catch(error){
   if((error as any).finishReason!=='MAX_TOKENS'||!/^gemini-2\.5(?:-|$)/.test(config.textModel))throw error;
-  return gemini(prompt,config,'text',parts,{studio:true,maxOutputTokens:65536});
+  return gemini(prompt,config,mode,parts,{studio:true,maxOutputTokens:65536});
  }
 }
 export async function processStudio(id:string){
