@@ -15,3 +15,10 @@ test('failed format repair cannot silently pass validation or trigger another re
 test('valid structured output requires no repair',async()=>{
  assert.equal((await validatedStudioJson('{"ready":true,"summary":"Checks passed"}',schema,async()=>{throw Error('Must not repair valid JSON');})).ready,true);
 });
+test('final review reads authoritative facts and the final render, excluding prior drafts and scores',async()=>{
+ const {studioSourceFiles}=await import('./studio-task');
+ assert.deepEqual(studioSourceFiles('review'),['business-facts.json','improved-site.json','competitors.json','after-checks.json']);
+ assert.ok(!studioSourceFiles('review').includes('brief.json'));
+ assert.ok(!studioSourceFiles('review').includes('rendered-before.json'));
+ assert.ok(studioSourceFiles('improved').includes('business-facts.json'));
+});

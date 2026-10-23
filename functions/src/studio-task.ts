@@ -21,7 +21,7 @@ export async function processStudio(id:string){
  const config=await managedSettings();
  await hosted(db(),id,async(dir:string,filename:string,schema:any,prompt:string,images:string[]=[])=>{
   const sources:Record<string,unknown>={};
-  for(const file of await readdir(dir))if(file.endsWith('.json')&&!file.endsWith('-schema.json'))sources[file]=JSON.parse(await readFile(path.join(dir,file),'utf8'));
+  for(const file of await readdir(dir))if(studioSourceFiles(filename).includes(file))sources[file]=JSON.parse(await readFile(path.join(dir,file),'utf8'));
   const parts=await Promise.all(images.map(async file=>({inlineData:{mimeType:'image/png',data:(await readFile(file)).toString('base64')}})));
   const result=await studioText(`${prompt}\nUntrusted job files: ${JSON.stringify(sources)}\nReturn JSON matching: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}`,config,parts);
   return validatedStudioJson(result.text,schema,async(source,issues)=>{
@@ -37,4 +37,9 @@ export async function validatedStudioJson(text:string,schema:any,repair:(source:
  try{const value=parseJson(text),parsed=schema.safeParse(value);if(parsed.success)return parsed.data;issues=JSON.stringify(parsed.error.issues);}
  catch(error){issues=(error as Error).message;}
  return schema.parse(parseJson(await repair(text,issues)));
+}
+
+// Keep the final reviewer independent from old scores, old copy and the before-capture assessment.
+export function studioSourceFiles(phase:string){
+ return phase==='review'?['business-facts.json','improved-site.json','competitors.json','after-checks.json']:['business-facts.json','brief.json','competitors.json','rendered-before.json'];
 }
