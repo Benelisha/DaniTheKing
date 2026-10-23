@@ -260,6 +260,7 @@ function Workspace() {
                     {[
                       "BUSINESS / SERVICE",
                       "LOCATION",
+                      "GOOGLE REVIEWS",
                       "WEBSITE CHECK",
                       "CALL STATUS",
                       "WEBSITE STUDIO",
@@ -270,7 +271,7 @@ function Workspace() {
                         style={[
                           styles.col,
                           {
-                            flex: i === 0 ? 1.5 : 1,
+                            flex: i === 0 ? 1.5 : i === 2 ? 0.7 : 1,
                             fontSize: 10,
                             fontWeight: "600",
                             letterSpacing: 1,
@@ -341,6 +342,12 @@ function Workspace() {
                         </Text>
                         <Text style={{ fontSize: 12, color: colors.muted }}>
                           {l.phone}
+                        </Text>
+                      </View>
+                      <View style={[styles.col, { flex: wide ? 0.7 : undefined, gap: 5 }]}>
+                        {!wide && <Text style={{ fontSize: 10, color: colors.muted }}>Google Maps reviews</Text>}
+                        <Text accessibilityLabel={l.profile?.reviewCount == null ? "Google Maps review count unavailable" : `${l.profile.reviewCount} Google Maps reviews`} style={{ fontSize: 14, color: colors.ink }}>
+                          {l.profile?.reviewCount == null ? "—" : l.profile.reviewCount.toLocaleString()}
                         </Text>
                       </View>
                       <View style={[styles.col, { gap: 5 }]}>
