@@ -27,11 +27,15 @@ async function capture(browser,site,dir,label='candidate'){
   await page.evaluate(async()=>{await Promise.all(Array.from(document.images).map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=img.onerror=r;setTimeout(r,12000);})));});
   const measured=await page.evaluate(()=>({brokenImages:Array.from(document.images).filter(i=>!i.complete||!i.naturalWidth).length,overflow:Array.from(document.querySelectorAll('#site-content *')).filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&(r.left< -2||r.right>window.innerWidth+2);}).length,sections:Array.from(document.querySelectorAll('#site-content [id]')).map(e=>e.id),headings:Array.from(document.querySelectorAll('[role="heading"]')).map(e=>e.textContent),text:document.getElementById('site-content').textContent}));
   const faq=page.getByRole('button',{expanded:false}).first();let faqPassed=true;if(await faq.count()){await faq.click();faqPassed=await faq.getAttribute('aria-expanded')==='true';}
-  const contact=page.locator('#contact');const contactPassed=await contact.count()>0;
+  const contact=page.locator('#contact');let contactPassed=await contact.count()>0;
+  const primary=page.getByRole('button',{name:site.content.cta+' ↗',exact:true}).first();
+  if(await primary.count()){await primary.click();await page.waitForTimeout(700);contactPassed=contactPassed&&await contact.evaluate(el=>{const r=el.getBoundingClientRect();return r.top<window.innerHeight&&r.bottom>0;});}else contactPassed=false;
+  const missingSections=(site.blueprint?.sections||[]).filter(s=>!measured.sections.includes(s.id)).map(s=>s.id);
+  await page.locator('#hero').evaluate(el=>el.scrollIntoView());
   // Expand scroll ancestors only for a full-length artifact, after measuring real viewport layout.
   await page.evaluate(()=>{let el=document.getElementById('site-content')?.parentElement;while(el){el.style.overflow='visible';el.style.height='auto';el.style.maxHeight='none';el=el.parentElement;}});
   const screenshot=path.join(dir,`${label}-${name}.png`);await page.screenshot({path:screenshot,fullPage:true});screens.push(screenshot);
-  checks.push({viewport:name,width,brokenImages:measured.brokenImages,overflow:measured.overflow,errors,faqPassed,contactPassed,headings:measured.headings,sections:measured.sections,text:measured.text?.slice(0,25000),passed:!errors.length&&!measured.brokenImages&&!measured.overflow&&faqPassed&&contactPassed});await context.close();
+  checks.push({viewport:name,width,brokenImages:measured.brokenImages,overflow:measured.overflow,errors,faqPassed,contactPassed,missingSections,headings:measured.headings,sections:measured.sections,text:measured.text?.slice(0,25000),passed:!errors.length&&!measured.brokenImages&&!measured.overflow&&faqPassed&&contactPassed&&!missingSections.length});await context.close();
  }}finally{await new Promise(r=>server.close(r));}
  const colors={inkBackground:contrast(site.design.ink,site.design.background),whiteAccent:contrast('#ffffff',site.design.accent),accentBackground:contrast(site.design.accent,site.design.background)};
  const result={passed:checks.every(c=>c.passed)&&Object.values(colors).every(v=>v>=4.5),colors,viewports:checks};await fs.writeFile(path.join(dir,`${label}-checks.json`),JSON.stringify(result,null,2));return {checks:result,screens};

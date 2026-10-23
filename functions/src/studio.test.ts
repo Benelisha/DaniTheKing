@@ -41,3 +41,18 @@ test('unavailable competitors remain honest evidence gaps, without invented visu
  const {blueprint}=reviewedDraft();blueprint.competitors[2]={...blueprint.competitors[2],accessible:false,patterns:[]};
  assert.doesNotThrow(()=>studioSchema.parse({blueprint}));
 });
+
+import {validateSectionContent} from './studio-domain';
+test('section validation prevents decorative empty FAQs, missing images and plan mismatches',()=>{
+ const draft:any=reviewedDraft();draft.content={headline:'Pool care in Phoenix',intro:'Original and useful introduction.',imageUrl:'https://example.com/hero.webp',services:[{title:'Pool cleaning',description:'Contact us for pool care.'}],about:'A local pool cleaning business.',cta:'Get in touch',assets:[],sections:sections.map(s=>({id:s.id,kind:s.kind,title:s.title,eyebrow:'',body:'A useful section.',items:Array.from({length:3},()=>({title:'Useful visitor question',body:'An original, factual answer.'})),imageIndex:null}))};
+ assert.doesNotThrow(()=>validateSectionContent(draft));
+ draft.content.sections[0].imageIndex=0;assert.throws(()=>validateSectionContent(draft),/missing image/);draft.content.sections[0].imageIndex=null;
+ draft.content.sections.find((s:any)=>s.kind==='faq').items=[];assert.throws(()=>validateSectionContent(draft),/at least three/);
+});
+
+import {alignBlueprintSources} from './studio-domain';
+test('research URLs align by business host despite redirects, order and trailing slashes',()=>{
+ const {blueprint}=reviewedDraft();const shuffled={...blueprint,competitors:[...blueprint.competitors].reverse().map(c=>({...c,websiteUrl:c.websiteUrl+'/'}))};
+ assert.deepEqual(alignBlueprintSources(shuffled as any,examples).competitors.map(c=>c.websiteUrl),examples.map(e=>e.websiteUrl));
+ assert.throws(()=>alignBlueprintSources({...blueprint,competitors:blueprint.competitors.map(c=>({...c,websiteUrl:'https://unselected.com'}))} as any,examples),/exactly once/);
+});

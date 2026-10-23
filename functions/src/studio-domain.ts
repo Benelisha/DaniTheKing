@@ -9,7 +9,7 @@ export const blueprintSchema=z.object({summary:z.string().min(30),visualDirectio
 export const pageSectionSchema=z.object({id:z.string().regex(/^[a-z][a-z0-9-]*$/),kind:sectionKind,title:z.string().min(3),eyebrow:z.string(),body:z.string(),items:z.array(z.object({title:z.string(),body:z.string()})).max(12),imageIndex:z.number().int().min(0).max(9).nullable()});
 export const assetSchema=z.object({url:z.url(),caption:z.string(),provenance:z.enum(['uploaded','bank','generated','illustrative']),sourceUrl:z.string()});
 export const contentSchema=z.object({headline:z.string().min(5).max(200),intro:z.string().min(10).max(2000),imageUrl:z.string().url().refine(v=>new URL(v).protocol==='https:'),services:z.array(z.object({title:z.string().min(2),description:z.string().min(5)})).min(1).max(12),about:z.string().min(10).max(3000),cta:z.string().min(3).max(80),sections:z.array(pageSectionSchema).max(12).optional(),assets:z.array(assetSchema).max(10).optional()});
-export const designSchema=z.object({accent:z.string().regex(/^#[a-fA-F0-9]{6}$/),background:z.string().regex(/^#[a-fA-F0-9]{6}$/),ink:z.string().regex(/^#[a-fA-F0-9]{6}$/),heroLayout:z.enum(['split','centered']),cornerRadius:z.number().min(0).max(32),rationale:z.string().min(20).max(3000),heroStyle:z.enum(['editorial','immersive']).optional(),fontStyle:z.enum(['modern','editorial']).optional()});
+export const designSchema=z.object({accent:z.string().regex(/^#[a-fA-F0-9]{6}$/),background:z.string().regex(/^#[a-fA-F0-9]{6}$/),ink:z.string().regex(/^#[a-fA-F0-9]{6}$/),heroLayout:z.enum(['split','centered']),cornerRadius:z.number().min(0).max(32),rationale:z.string().min(20).max(3000),fontStyle:z.enum(['modern','editorial']).optional()});
 export const reviewSchema=z.object({summary:z.string().min(20),scores:z.object({design:z.number().min(0).max(100),content:z.number().min(0).max(100),ux:z.number().min(0).max(100)}),comparisons:z.array(z.object({websiteUrl:z.url(),observed:z.boolean(),strengthsMatched:z.array(z.string()),remainingGaps:z.array(z.string())})).length(5),sectionChecks:z.array(z.object({id:z.string(),passed:z.boolean(),notes:z.string()})).min(5),changes:z.array(z.string()),blockers:z.array(z.string()),ready:z.boolean()});
 export function validateSectionContent(draft:any){
  const plan=blueprintSchema.parse(draft.blueprint),content=contentSchema.parse(draft.content);
@@ -40,4 +40,12 @@ export function validateStage(stage:string,draft:any){
   if(['design','review','publish'].includes(stage))contentSchema.parse(draft.content);
   if(['review','publish'].includes(stage))designSchema.parse(draft.design);
   if(stage==='publish'){validateSectionContent(draft);assertReviewReady(draft);}
+}
+
+export function alignBlueprintSources(blueprint:z.infer<typeof blueprintSchema>,examples:z.infer<typeof examplesSchema>){
+ const host=(url:string)=>new URL(url).hostname.toLowerCase().replace(/^www\./,'');
+ const competitors=examples.map(e=>{const matches=blueprint.competitors.filter(c=>host(c.websiteUrl)===host(e.websiteUrl));if(matches.length!==1)throw Error('Blueprint must inspect each selected competitor exactly once.');return {...matches[0],websiteUrl:e.websiteUrl};});
+ const allowed=new Set(examples.map(e=>host(e.websiteUrl)));
+ for(const section of blueprint.sections)if(section.referenceUrls.some(url=>!allowed.has(host(url))))throw Error('Blueprint section cites an unselected competitor.');
+ return {...blueprint,competitors};
 }
