@@ -90,4 +90,4 @@ async function validateRendered(html) {
   } finally { await browser.close(); }
   return {errors,screenshots};
 }
-module.exports = {publicAddress,publicUrl,inspectReferences,validateRendered};
+module.exports = {publicAddress,publicUrl,readPublic,inspectReferences,validateRendered};

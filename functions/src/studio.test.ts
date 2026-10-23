@@ -36,3 +36,8 @@ test('publication rejects missing sections, reordered content, failed browser ch
  assert.throws(()=>assertReviewReady({...draft,review:{...draft.review,comparisons:[...draft.review.comparisons].reverse()}}),/sources/);
 });
 test('short URLs use cryptographically random six character IDs, independent of business name',()=>{const ids=Array.from({length:100},shortSiteId);assert.ok(ids.every(v=>/^[a-f0-9]{6}$/.test(v)));assert.equal(new Set(ids).size,ids.length);});
+
+test('unavailable competitors remain honest evidence gaps, without invented visual patterns',()=>{
+ const {blueprint}=reviewedDraft();blueprint.competitors[2]={...blueprint.competitors[2],accessible:false,patterns:[]};
+ assert.doesNotThrow(()=>studioSchema.parse({blueprint}));
+});

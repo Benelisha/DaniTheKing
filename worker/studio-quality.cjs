@@ -1,11 +1,13 @@
-const fs=require('node:fs/promises'),path=require('node:path'),http=require('node:http'),dns=require('node:dns/promises');
+const fs=require('node:fs/promises'),path=require('node:path'),http=require('node:http');
 const {chromium}=require('playwright');
-function privateIP(ip){return /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|::|f[cd]|fe80)/i.test(ip);}
-async function publicURL(raw){try{const u=new URL(raw);if(u.protocol!=='https:'||u.username||u.password||u.port&&!['443'].includes(u.port))return false;const records=await dns.lookup(u.hostname,{all:true});return records.length>0&&records.every(r=>!privateIP(r.address));}catch{return false;}}
+const {publicUrl,readPublic}=require('./browser.cjs');
+async function publicURL(raw){try{if(new URL(raw).protocol!=='https:')return false;await publicUrl(raw);return true;}catch{return false;}}
 async function openBrowser(){return chromium.launch({headless:true});}
 async function references(browser,examples,dir){
- const result=[];const context=await browser.newContext({viewport:{width:1440,height:1000}});
- const cache=new Map();await context.route('**/*',async route=>{const url=route.request().url();if(url.startsWith('data:'))return route.continue();const origin=(()=>{try{return new URL(url).origin;}catch{return '';}})();if(!cache.has(origin))cache.set(origin,await publicURL(url));return cache.get(origin)?route.continue():route.abort();});
+ const result=[];const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block',acceptDownloads:false});
+ let requests=0,bytes=0;
+ await context.route('**/*',async route=>{try{if(++requests>1250||bytes>150000000||route.request().method()!=='GET')return await route.abort();const response=await readPublic(route.request().url());bytes+=response.body.length;await route.fulfill(response);}catch{await route.abort();}});
+ await context.routeWebSocket('**/*',ws=>ws.close());
  for(let i=0;i<examples.length;i++){
   const page=await context.newPage(),entry={websiteUrl:examples[i].websiteUrl,observed:false};
   try{await page.goto(entry.websiteUrl,{waitUntil:'domcontentloaded',timeout:35000});await page.waitForTimeout(2500);entry.title=await page.title();entry.text=(await page.locator('body').innerText()).slice(0,22000);entry.observed=entry.text.length>250&&!/just a moment|verify you are human|access denied/i.test(entry.title);if(entry.observed){entry.screenshot=path.join(dir,`competitor-${i+1}.png`);await page.screenshot({path:entry.screenshot,fullPage:false});}}catch(e){entry.error=e.message.slice(0,200);}finally{await page.close();}

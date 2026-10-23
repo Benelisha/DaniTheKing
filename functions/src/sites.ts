@@ -74,7 +74,10 @@ export class SitesController{
       const occupied=await tx.get(db().doc(`publishedWebsites/${slug}`));
       if(occupied.exists&&occupied.data()!.leadId!==id)throw new HttpException('Short URL collision. Retry publishing.',409);
       const url=`https://dnby.web.app/${slug}`;
-      tx.set(db().doc(`publishedWebsites/${slug}`),{leadId:id,business:facts(l.data()),content:draft.content,design:draft.design,brief:draft.brief,blueprint:draft.blueprint,publishedAt:now(),revision});
+      const aliases=await tx.get(db().collection('publishedWebsites').where('leadId','==',id));
+      const published={leadId:id,business:facts(l.data()),content:draft.content,design:draft.design,brief:draft.brief,blueprint:draft.blueprint,canonicalUrl:url,publishedAt:now(),revision};
+      for(const alias of aliases.docs)tx.set(alias.ref,published);
+      tx.set(db().doc(`publishedWebsites/${slug}`),published);
       tx.update(leadRef,{websiteSlug:slug,generatedWebsiteUrl:url,updatedAt:now()});tx.update(ref,{publishedRevision:revision,publishedUrl:url,publishedAt:now()});
       tx.create(ref.collection('history').doc(),{action:'publish',actor:req.actor,at:now(),revision});
     });return this.read(id);

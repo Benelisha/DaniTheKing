@@ -5,12 +5,21 @@ export const examplesSchema=z.array(exampleSchema).length(5).refine(rows=>new Se
 export const analysisSchema=z.array(z.object({websiteUrl:z.url(),good:z.array(z.string().min(5)).length(5),bad:z.array(z.string().min(5)).length(5)})).length(5);
 export const briefSchema=z.object({direction:z.string().min(10).max(3000),audience:z.string().min(3).max(500),sections:z.string().min(5).max(1500),features:z.array(z.enum(['contact','newsletter','appointment'])).default(['contact'])});
 export const sectionKind=z.enum(['services','about','process','reviews','gallery','faq','areas','cta','contact']);
-export const blueprintSchema=z.object({summary:z.string().min(30),visualDirection:z.string().min(30),competitors:z.array(z.object({websiteUrl:z.url(),accessible:z.boolean(),observations:z.string().min(20),patterns:z.array(z.string()).min(1)})).length(5),sections:z.array(z.object({id:z.string().regex(/^[a-z][a-z0-9-]*$/),kind:sectionKind,title:z.string().min(3),purpose:z.string().min(10),requirements:z.string().min(10),referenceUrls:z.array(z.url()).min(1),imageBrief:z.string()})).min(5).max(12)}).refine(v=>new Set(v.sections.map(s=>s.id)).size===v.sections.length,'Section IDs must be unique');
+export const blueprintSchema=z.object({summary:z.string().min(30),visualDirection:z.string().min(30),competitors:z.array(z.object({websiteUrl:z.url(),accessible:z.boolean(),observations:z.string().min(20),patterns:z.array(z.string())})).length(5),sections:z.array(z.object({id:z.string().regex(/^[a-z][a-z0-9-]*$/),kind:sectionKind,title:z.string().min(3),purpose:z.string().min(10),requirements:z.string().min(10),referenceUrls:z.array(z.url()).min(1),imageBrief:z.string()})).min(5).max(12)}).refine(v=>new Set(v.sections.map(s=>s.id)).size===v.sections.length,'Section IDs must be unique');
 export const pageSectionSchema=z.object({id:z.string().regex(/^[a-z][a-z0-9-]*$/),kind:sectionKind,title:z.string().min(3),eyebrow:z.string(),body:z.string(),items:z.array(z.object({title:z.string(),body:z.string()})).max(12),imageIndex:z.number().int().min(0).max(9).nullable()});
 export const assetSchema=z.object({url:z.url(),caption:z.string(),provenance:z.enum(['uploaded','bank','generated','illustrative']),sourceUrl:z.string()});
 export const contentSchema=z.object({headline:z.string().min(5).max(200),intro:z.string().min(10).max(2000),imageUrl:z.string().url().refine(v=>new URL(v).protocol==='https:'),services:z.array(z.object({title:z.string().min(2),description:z.string().min(5)})).min(1).max(12),about:z.string().min(10).max(3000),cta:z.string().min(3).max(80),sections:z.array(pageSectionSchema).max(12).optional(),assets:z.array(assetSchema).max(10).optional()});
 export const designSchema=z.object({accent:z.string().regex(/^#[a-fA-F0-9]{6}$/),background:z.string().regex(/^#[a-fA-F0-9]{6}$/),ink:z.string().regex(/^#[a-fA-F0-9]{6}$/),heroLayout:z.enum(['split','centered']),cornerRadius:z.number().min(0).max(32),rationale:z.string().min(20).max(3000),heroStyle:z.enum(['editorial','immersive']).optional(),fontStyle:z.enum(['modern','editorial']).optional()});
 export const reviewSchema=z.object({summary:z.string().min(20),scores:z.object({design:z.number().min(0).max(100),content:z.number().min(0).max(100),ux:z.number().min(0).max(100)}),comparisons:z.array(z.object({websiteUrl:z.url(),observed:z.boolean(),strengthsMatched:z.array(z.string()),remainingGaps:z.array(z.string())})).length(5),sectionChecks:z.array(z.object({id:z.string(),passed:z.boolean(),notes:z.string()})).min(5),changes:z.array(z.string()),blockers:z.array(z.string()),ready:z.boolean()});
+export function validateSectionContent(draft:any){
+ const plan=blueprintSchema.parse(draft.blueprint),content=contentSchema.parse(draft.content);
+ if(JSON.stringify(content.sections?.map(s=>[s.id,s.kind]))!==JSON.stringify(plan.sections.map(s=>[s.id,s.kind])))throw Error('Content must preserve blueprint section order and types.');
+ for(const section of content.sections!){
+  if(['faq','process'].includes(section.kind)&&section.items.length<3)throw Error(`${section.kind} requires at least three useful items.`);
+  if(section.kind==='services'&&!section.items.length)throw Error('Service details are required.');
+  if(section.imageIndex!=null&&section.imageIndex>=(content.assets?.length||0))throw Error('Section references a missing image.');
+ }
+}
 export function assertReviewReady(draft:any){
  blueprintSchema.parse(draft.blueprint);const review=reviewSchema.parse(draft.review);
  const sections=draft.content?.sections||[];
@@ -30,5 +39,5 @@ export function validateStage(stage:string,draft:any){
   if(['content','design','review','publish'].includes(stage))briefSchema.parse(draft.brief);
   if(['design','review','publish'].includes(stage))contentSchema.parse(draft.content);
   if(['review','publish'].includes(stage))designSchema.parse(draft.design);
-  if(stage==='publish')assertReviewReady(draft);
+  if(stage==='publish'){validateSectionContent(draft);assertReviewReady(draft);}
 }

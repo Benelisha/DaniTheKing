@@ -1,7 +1,7 @@
 // Outbound Firestore queue: no public listener/tunnel or browser credentials.
 const fs=require('node:fs/promises'),path=require('node:path'),{spawn}=require('node:child_process'),{randomUUID}=require('node:crypto');
 const {connect}=require('./auth.cjs');
-const {designSchema,contentSchema,reviewSchema,assertReviewReady}=require('../functions/lib/studio-domain');
+const {designSchema,contentSchema,reviewSchema,assertReviewReady,validateSectionContent}=require('../functions/lib/studio-domain');
 const {z}=require('zod');
 const {facts,factsFingerprint}=require('../functions/lib/studio-facts');
 const quality=require('./studio-quality.cjs');
@@ -59,7 +59,7 @@ async function processJob(ref){
     report.comparisons=report.comparisons.map(v=>({...v,observed:!!refs.find(r=>r.websiteUrl===v.websiteUrl)?.observed}));
     if(!after.checks.passed){report.ready=false;report.blockers.push('Automated desktop/mobile or contrast checks failed.');}
     draft.review=report;draft.reviewChecks={...after.checks,checkedAt:new Date().toISOString()};
-    try{assertReviewReady(draft);}catch(e){draft.review.ready=false;if(!draft.review.blockers.includes(e.message))draft.review.blockers.push(e.message);}
+    try{validateSectionContent(draft);assertReviewReady(draft);}catch(e){draft.review.ready=false;if(!draft.review.blockers.includes(e.message))draft.review.blockers.push(e.message);}
    }finally{await browser.close();}
   }
   if(lost)throw Error('Worker lease lost');
