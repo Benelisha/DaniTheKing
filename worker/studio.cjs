@@ -6,6 +6,16 @@ const {facts,factsFingerprint}=require('../functions/lib/studio-facts');
 const quality=require('./studio-quality.cjs');
 const {studioDirection,studioReviewDirection}=require('../functions/lib/studio-direction');
 const sourcedDesignSchema=designSchema.omit({paletteSources:true}).extend({visualStyle:z.enum(['editorial','bold','minimal']),serviceLayout:z.enum(['cards','list']),imageShape:z.enum(['rounded','arch']),fontStyle:z.enum(['modern','editorial']),surface:z.string().regex(/^#[a-fA-F0-9]{6}$/),onAccent:z.string().regex(/^#[a-fA-F0-9]{6}$/),onInk:z.string().regex(/^#[a-fA-F0-9]{6}$/)});
+function designSchemaFor(refs){
+ const colors=[...new Set(refs.filter(r=>r.observed).flatMap(r=>r.visualEvidence?.colors||[]).map(c=>c.toLowerCase()))];
+ if(!colors.length)throw Error('No observed competitor palette available. Retry competitor inspection.');
+ const tokens=['accent','background','ink','surface','onAccent','onInk'];
+ return sourcedDesignSchema.extend(Object.fromEntries(tokens.map(token=>[token,z.enum(colors).describe('Choose an exact observed competitor color. All foreground/background pairs must have contrast at least 4.5:1.')]))).superRefine((d,ctx)=>{
+  for(const [a,b] of [['onInk','ink'],['ink','background'],['ink','surface'],['onAccent','accent'],['accent','background'],['accent','surface']]){
+   const ratio=quality.contrast(d[a],d[b]);if(ratio<4.5)ctx.addIssue({code:'custom',path:[a],message:`${a}/${b} contrast is ${ratio.toFixed(2)}:1; choose observed colors with at least 4.5:1 contrast.`});
+  }
+ });
+}
 const workerId=randomUUID();
 let db,hostedModel;
 async function claim(ref){return db.runTransaction(async tx=>{const lock=db.doc('internal/studioWorkerLock'),[s,l]=await Promise.all([tx.get(ref),tx.get(lock)]);if(!s.exists||!['queued','running','building'].includes(s.data().status)||(l.exists&&l.data().until>Date.now()))return false;tx.set(lock,{workerId,jobId:ref.id,until:Date.now()+120000});tx.update(ref,{status:'running',progress:5,phase:'Preparing website',updatedAt:new Date().toISOString(),attempts:(s.data().attempts||0)+1});return true;});}
@@ -35,7 +45,7 @@ async function processJob(ref){
   if(job.stage==='design'){
    const browser=await quality.openBrowser();
    try{await fenced(ref,{progress:10,phase:'Extracting competitor palettes and styles'});const refs=await quality.references(browser,draft.examples,dir);
-    draft.design=quality.bindPalette(await modelJSON(dir,'design',sourcedDesignSchema,'Read brief.json and competitors.json. Derive all colors, style, typography and composition only from observed visualEvidence and competitor screenshots. Return exact observed hex colors for accent, background, ink, surface, onAccent, onInk. Cite source URLs and observations for every style control in rationale. Choose accessible foreground/background pairs; do not invent colors or a house style.',refs.filter(r=>r.screenshot).map(r=>r.screenshot)),refs);
+    draft.design=quality.bindPalette(await modelJSON(dir,'design',designSchemaFor(refs),'Read brief.json and competitors.json. Derive all colors, style, typography and composition only from observed visualEvidence and competitor screenshots. Return exact observed hex colors for accent, background, ink, surface, onAccent, onInk. Cite source URLs and observations for every style control in rationale. Choose accessible foreground/background pairs; do not invent colors or a house style.',refs.filter(r=>r.screenshot).map(r=>r.screenshot)),refs);
    }finally{await browser.close();}
    delete draft.review;delete draft.reviewChecks;
   }
@@ -50,7 +60,7 @@ async function processJob(ref){
     console.log(`Studio ${ref.id}: capturing desktop/mobile draft`);
     const before=await quality.capture(browser,{business,...draft},dir,'before');
     await fs.writeFile(path.join(dir,'rendered-before.json'),JSON.stringify(before.checks,null,2));
-    const improvedSchema=z.object({blueprint:blueprintSchema,content:contentSchema,design:sourcedDesignSchema,changes:z.array(z.string()).min(1)});
+    const improvedSchema=z.object({blueprint:blueprintSchema,content:contentSchema,design:designSchemaFor(refs),changes:z.array(z.string()).min(1)});
     await fenced(ref,{progress:55,phase:'Improving section order, content and design'});
     console.log(`Studio ${ref.id}: improving from browser evidence`);
     const improved=await modelJSON(dir,'improved',improvedSchema,'Read brief.json, competitors.json, rendered-before.json and attached screenshots. The first two images are our desktop/mobile website; later images are competitor homepages in order of accessible entries. Compare the entire experience and improve the result to professional competitor quality. Fix sparse content, weak hierarchy, missing section requirements, typography, whitespace, inquiry paths and mobile layout. Preserve EVERY blueprint section id and kind, and change section order or requirements only to match observed competitor patterns, citing the source URL for every change. Keep a working contact destination, and implement detailed original copy and items in the revised blueprint order. Update the blueprint to match the supported website experience; do not demand fake forms, ZIP checkers or automated service reports. Generated gallery images must be labelled inspiration, never actual customer projects. Never promise free quotes, service policies, guarantees, credentials, coverage or prices absent from the supplied business facts. FAQ needs at least three useful questions; process needs clear steps. Include real sourced reviews through the existing reviews renderer, never manufacture quotes or claims. Only offer this business’s supplied services. Never introduce pricing, certifications or guarantees not in facts. Do not invent functional forms. Keep existing image assets/URLs and use imageIndex 0 or 1 or null. Respect browser contrast checks. Return improved content/design and a concrete change list.'+(job.instructions?' Apply this user revision request, preserving supplied business facts and working contact paths: '+JSON.stringify(job.instructions):''),[...before.screens,...refs.filter(v=>v.screenshot).map(v=>v.screenshot)]);
@@ -80,4 +90,4 @@ async function processJob(ref){
 }
 if(require.main===module)throw Error('Studio jobs now run in Firebase; the local studio worker is retired.');
 async function hosted(database,id,model){db=database;hostedModel=model;const ref=db.doc(`siteJobs/${id}`),job=await ref.get();if(!job.exists||!['queued','running','building'].includes(job.data().status))return;if(!['design','review'].includes(job.data().stage))throw Error('Unsupported hosted stage');if(!await claim(ref))throw Error('Studio worker lease busy');await processJob(ref);}
-module.exports={hosted,comparisonModelSchema,bindComparisons};
+module.exports={hosted,comparisonModelSchema,bindComparisons,designSchemaFor};

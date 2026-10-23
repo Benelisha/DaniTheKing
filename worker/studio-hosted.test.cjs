@@ -32,3 +32,13 @@ test('failed revision jobs retain the request and mark it failed',async()=>{
  await hosted(db,'test',()=>{throw Error('Must not call model');});
  assert.equal(db.rows.get('siteJobs/test').status,'failed');const request=db.rows.get('websiteStudios/lead/revisionRequests/request');assert.equal(request.status,'failed');assert.equal(request.number,1);assert.match(request.error,/draft changed/);
 });
+test('model design schema permits only observed colors and rejects inaccessible contrast pairs',()=>{
+ const {designSchemaFor}=require('./studio.cjs');
+ const colors=['#ffffff','#0a1b33','#faf9f6','#1e5eff'];
+ const schema=designSchemaFor([{observed:true,visualEvidence:{colors}}]);
+ const d={accent:'#1e5eff',background:'#ffffff',ink:'#0a1b33',surface:'#faf9f6',onAccent:'#ffffff',onInk:'#ffffff',heroLayout:'split',fontStyle:'modern',visualStyle:'bold',serviceLayout:'cards',imageShape:'rounded',cornerRadius:12,rationale:'A palette observed on the selected competitor website.'};
+ assert.equal(schema.safeParse(d).success,true);
+ assert.equal(schema.safeParse({...d,accent:'#153355'}).success,false);
+ assert.equal(schema.safeParse({...d,ink:'#faf9f6'}).success,false);
+ const json=require('zod').z.toJSONSchema(schema);assert.deepEqual(json.properties.accent.enum,colors);
+});
