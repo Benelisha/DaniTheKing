@@ -29,7 +29,7 @@ export class SitesController{
       if((s.data()?.revision||0)!==input.revision)throw new HttpException('This studio changed. Reload before saving.',409);
       const before=s.data()?.draft||{};let draft:any={...input.draft};
       // A changed upstream step requires downstream regeneration/review.
-      const order=['examples','blueprint','brief','content','design'];
+      const order=['examples','analysis','blueprint','brief','content','design'];
       for(let i=0;i<order.length;i++)if(JSON.stringify(before[order[i]])!==JSON.stringify(draft[order[i]]))for(const next of order.slice(i+1))delete draft[next];
       // Review is server-owned and always invalidated by an edit.
       tx.set(ref,{...s.data(),draft,revision:input.revision+1,updatedAt:now()});
@@ -65,7 +65,7 @@ export class SitesController{
       if(stage==='content'){const assets=await studioAssets(id,current.business,current.draft.blueprint,req.actor);(result as any).assets=assets;(result as any).imageUrl=assets[0].url;}
       if(stage==='blueprint')result=alignBlueprintSources(result as any,current.draft.examples);
       if(stage==='analysis'&&JSON.stringify((result as any[]).map(v=>v.websiteUrl))!==JSON.stringify(current.draft.examples.map((v:any)=>v.websiteUrl)))throw Error('Analysis URLs do not match the selected examples. Retry analysis.');
-      await db().runTransaction(async tx=>{const studio=db().doc(`websiteStudios/${id}`);const [s,l]=await Promise.all([tx.get(studio),tx.get(db().doc(`leads/${id}`))]);if(!l.exists||l.data()!.removedAt||s.data()?.revision!==revision)throw Error('Business or studio changed during generation. Reload and retry.');const draft={...s.data()!.draft,[stage]:result};const order=['examples','blueprint','brief','content','design','review','reviewChecks'];for(const key of order.slice(order.indexOf(stage)+1))delete draft[key];if(stage==='examples')delete draft.analysis;tx.update(studio,{draft,revision:revision+1,updatedAt:now()});tx.update(ref,{status:'completed',updatedAt:now()});tx.create(studio.collection('history').doc(),{action:stage,actor:req.actor,at:now(),draft,revision:revision+1});});
+      await db().runTransaction(async tx=>{const studio=db().doc(`websiteStudios/${id}`);const [s,l]=await Promise.all([tx.get(studio),tx.get(db().doc(`leads/${id}`))]);if(!l.exists||l.data()!.removedAt||s.data()?.revision!==revision)throw Error('Business or studio changed during generation. Reload and retry.');const draft={...s.data()!.draft,[stage]:result};const order=['examples','analysis','blueprint','brief','content','design','review','reviewChecks'];for(const key of order.slice(order.indexOf(stage)+1))delete draft[key];if(stage==='examples')delete draft.analysis;tx.update(studio,{draft,revision:revision+1,updatedAt:now()});tx.update(ref,{status:'completed',updatedAt:now()});tx.create(studio.collection('history').doc(),{action:stage,actor:req.actor,at:now(),draft,revision:revision+1});});
     }catch(e){await ref.update({status:'failed',error:(e as Error).message.slice(0,1200),updatedAt:now()});}
     return this.read(id);
   }
