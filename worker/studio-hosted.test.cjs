@@ -6,9 +6,10 @@ function database(revision=0){
  const tx={get:r=>r.get(),set:(r,v)=>rows.set(r.p,v),update:(r,v)=>rows.set(r.p,{...rows.get(r.p),...v}),delete:r=>rows.delete(r.p),create:(r,v)=>rows.set(r.p,v)};
  return {rows,doc,runTransaction:fn=>fn(tx)};
 }
-test('hosted design saves a durable result and duplicate delivery does not rerun it',async()=>{
+test('hosted design saves a durable result and duplicate delivery does not rerun it',async t=>{
+ const quality=require('./studio-quality.cjs');t.mock.method(quality,'openBrowser',async()=>({close:async()=>{}}));t.mock.method(quality,'references',async()=>[{websiteUrl:'https://competitor.example',observed:true,visualEvidence:{colors:['#005544','#ffffff','#112211']}}]);
  process.env.STUDIO_HOSTED='true';const db=database();let calls=0;
- const model=async(_dir,_file,schema,_prompt,images)=>{assert.deepEqual(images,[]);calls++;return schema.parse({accent:'#005544',background:'#ffffff',ink:'#112211',heroLayout:'split',cornerRadius:12,rationale:'Clear hierarchy and accessible color contrast.'});};
+ const model=async(_dir,_file,schema,_prompt,images)=>{assert.deepEqual(images,[]);calls++;return schema.parse({visualStyle:'minimal',serviceLayout:'list',imageShape:'rounded',fontStyle:'modern',surface:'#ffffff',onAccent:'#ffffff',onInk:'#ffffff',accent:'#005544',background:'#ffffff',ink:'#112211',heroLayout:'split',cornerRadius:12,rationale:'Clear hierarchy and accessible color contrast.'});};
  await hosted(db,'test',model);assert.equal(calls,1);assert.equal(db.rows.get('siteJobs/test').status,'completed');assert.equal(db.rows.get('websiteStudios/lead').revision,1);assert.ok(db.rows.get('websiteStudios/lead').draft.design);assert.ok(!db.rows.has('internal/studioWorkerLock'));
  await hosted(db,'test',model);assert.equal(calls,1);
 });

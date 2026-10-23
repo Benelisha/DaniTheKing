@@ -56,3 +56,8 @@ test('research URLs align by business host despite redirects, order and trailing
  assert.deepEqual(alignBlueprintSources(shuffled as any,examples).competitors.map(c=>c.websiteUrl),examples.map(e=>e.websiteUrl));
  assert.throws(()=>alignBlueprintSources({...blueprint,competitors:blueprint.competitors.map(c=>({...c,websiteUrl:'https://unselected.com'}))} as any,examples),/exactly once/);
 });
+
+test('section evidence cannot cite an inaccessible competitor',()=>{
+ const {blueprint}=reviewedDraft();blueprint.competitors[0].accessible=false;
+ assert.throws(()=>alignBlueprintSources(blueprint as any,examples),/inaccessible/);
+});

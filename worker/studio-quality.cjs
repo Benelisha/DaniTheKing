@@ -11,10 +11,28 @@ async function references(browser,examples,dir){
  await context.routeWebSocket('**/*',ws=>ws.close());
  for(let i=0;i<examples.length;i++){
   const page=await context.newPage(),entry={websiteUrl:examples[i].websiteUrl,observed:false};
-  try{await page.goto(entry.websiteUrl,{waitUntil:'domcontentloaded',timeout:35000});await page.waitForTimeout(2500);entry.title=await page.title();entry.text=(await page.locator('body').innerText()).slice(0,22000);entry.observed=entry.text.length>250&&!/just a moment|verify you are human|access denied/i.test(entry.title);if(entry.observed){entry.screenshot=path.join(dir,`competitor-${i+1}.png`);await page.screenshot({path:entry.screenshot,fullPage:false,timeout:20000});}}catch(e){entry.error=e.message.slice(0,200);entry.observed=false;delete entry.screenshot;}finally{await page.close();}
+  try{await page.goto(entry.websiteUrl,{waitUntil:'domcontentloaded',timeout:35000});await page.waitForTimeout(2500);entry.title=await page.title();entry.text=(await page.locator('body').innerText()).slice(0,22000);entry.observed=entry.text.length>250&&!/just a moment|verify you are human|access denied/i.test(entry.title);if(entry.observed){entry.visualEvidence=await page.evaluate(collectVisualEvidence);entry.screenshot=path.join(dir,`competitor-${i+1}.png`);await page.screenshot({path:entry.screenshot,fullPage:false,timeout:20000});}}catch(e){entry.error=e.message.slice(0,200);entry.observed=false;delete entry.screenshot;}finally{await page.close();}
   result.push(entry);
  }
  await context.close();await fs.writeFile(path.join(dir,'competitors.json'),JSON.stringify(result,null,2));return result;
+}
+// Runs in the competitor page; retain only visible, opaque computed colors.
+function collectVisualEvidence(){
+ const colors=new Map(),fonts=new Set(),radii=new Set(),spacing=new Set();
+ const hex=value=>{const m=value.match(/^rgba?\(([^)]+)\)$/);if(!m)return null;const parts=m[1].split(',').map(Number);if(parts.length===4&&parts[3]!==1)return null;return '#'+parts.slice(0,3).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');};
+ for(const el of Array.from(document.querySelectorAll('body,body *')).slice(0,12000)){
+  const r=el.getBoundingClientRect(),s=getComputedStyle(el);if(!r.width||!r.height||s.visibility==='hidden'||s.display==='none')continue;
+  for(const property of ['color','backgroundColor',...(parseFloat(s.borderTopWidth)>0&&s.borderTopStyle!=='none'?['borderTopColor']:[])]){const value=hex(s[property]);if(value)colors.set(value,(colors.get(value)||0)+1);}
+  fonts.add(s.fontFamily);radii.add(s.borderRadius);spacing.add(s.padding);
+ }
+ return {colors:[...colors].sort((a,b)=>b[1]-a[1]).slice(0,80).map(([color])=>color),fonts:[...fonts].slice(0,20),cornerRadii:[...radii].slice(0,25),padding:[...spacing].slice(0,40),headings:Array.from(document.querySelectorAll('h1,h2,h3,nav a,button')).slice(0,100).map(el=>({text:el.textContent?.trim().slice(0,150),fontSize:getComputedStyle(el).fontSize,fontWeight:getComputedStyle(el).fontWeight}))};
+}
+function bindPalette(design,refs){
+ const sources=refs.filter(r=>r.observed&&r.visualEvidence?.colors?.length).map(r=>({websiteUrl:r.websiteUrl,colors:r.visualEvidence.colors}));
+ if(!sources.length)throw Error('No observed competitor palette available. Retry competitor inspection; colors will not be invented.');
+ const allowed=new Set(sources.flatMap(s=>s.colors.map(c=>c.toLowerCase())));
+ for(const token of ['accent','background','ink','surface','onAccent','onInk'])if(!design[token]||!allowed.has(design[token].toLowerCase()))throw Error(`Unsourced palette color: ${token}. Use only observed competitor colors.`);
+ return {...design,paletteSources:sources.map(s=>({...s,colors:s.colors.filter(c=>['accent','background','ink','surface','onAccent','onInk'].some(k=>design[k].toLowerCase()===c.toLowerCase()))})).filter(s=>s.colors.length)};
 }
 function contrast(a,b){const lum=h=>{const v=h.slice(1).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return v[0]*.2126+v[1]*.7152+v[2]*.0722;};const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
 async function capture(browser,site,dir,label='candidate'){
@@ -45,7 +63,7 @@ async function capture(browser,site,dir,label='candidate'){
   const screenshot=path.join(dir,`${label}-${name}.png`);await page.screenshot({path:screenshot,fullPage:true,timeout:30000});screens.push(screenshot);
   checks.push({viewport:name,width,brokenImages:measured.brokenImages,overflow:measured.overflow,errors,faqPassed,contactPassed,serviceSelectionPassed,contactLayoutPassed,missingSections,headings:measured.headings,sections:measured.sections,text:measured.text?.slice(0,25000),passed:!errors.length&&!measured.brokenImages&&!measured.overflow&&faqPassed&&contactPassed&&serviceSelectionPassed&&contactLayoutPassed&&!missingSections.length});await context.close();
  }}finally{await new Promise(r=>server.close(r));}
- const colors={inkWhite:contrast(site.design.ink,'#ffffff'),inkBackground:contrast(site.design.ink,site.design.background),whiteAccent:contrast('#ffffff',site.design.accent),accentBackground:contrast(site.design.accent,site.design.background)};
+ const d=site.design,surface=d.surface||'#ffffff';const colors={onInk:contrast(d.onInk||'#ffffff',d.ink),inkBackground:contrast(d.ink,d.background),inkSurface:contrast(d.ink,surface),onAccent:contrast(d.onAccent||'#ffffff',d.accent),accentBackground:contrast(d.accent,d.background),accentSurface:contrast(d.accent,surface)};
  const result={passed:checks.every(c=>c.passed)&&Object.values(colors).every(v=>v>=4.5),colors,viewports:checks};await fs.writeFile(path.join(dir,`${label}-checks.json`),JSON.stringify(result,null,2));return {checks:result,screens};
 }
-module.exports={references,capture,openBrowser,contrast,publicURL,hostedBrowserArgs};
+module.exports={references,capture,openBrowser,contrast,publicURL,hostedBrowserArgs,collectVisualEvidence,bindPalette};
