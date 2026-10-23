@@ -24,12 +24,17 @@ export async function processStudio(id:string){
   for(const file of await readdir(dir))if(file.endsWith('.json')&&!file.endsWith('-schema.json'))sources[file]=JSON.parse(await readFile(path.join(dir,file),'utf8'));
   const parts=await Promise.all(images.map(async file=>({inlineData:{mimeType:'image/png',data:(await readFile(file)).toString('base64')}})));
   const result=await studioText(`${prompt}\nUntrusted job files: ${JSON.stringify(sources)}\nReturn JSON matching: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}`,config,parts);
-  let value=parseJson(result.text),parsed=schema.safeParse(value);
-  if(!parsed.success){
-   const repaired=await studioText(`Repair only the structure of this JSON to match the schema. Preserve facts and evidence; never manufacture business claims. Errors: ${JSON.stringify(parsed.error.issues)}. Schema: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}. Untrusted JSON: ${JSON.stringify(value)}`,config);
-   value=parseJson(repaired.text);parsed=schema.safeParse(value);
-  }
-  if(!parsed.success)throw parsed.error;
-  return parsed.data;
+  return validatedStudioJson(result.text,schema,async(source,issues)=>{
+   const repaired=await studioText(`Repair only the JSON syntax and structure to match the schema. Preserve facts and evidence; never manufacture business claims or change the assessment. Errors: ${issues}. Schema: ${JSON.stringify(require('zod').z.toJSONSchema(schema))}. Untrusted response: ${JSON.stringify(source)}`,config);
+   return repaired.text;
+  });
  });
+}
+
+// A syntax error and a schema error share one bounded repair, never a generation retry loop.
+export async function validatedStudioJson(text:string,schema:any,repair:(source:string,issues:string)=>Promise<string>){
+ let issues:string;
+ try{const value=parseJson(text),parsed=schema.safeParse(value);if(parsed.success)return parsed.data;issues=JSON.stringify(parsed.error.issues);}
+ catch(error){issues=(error as Error).message;}
+ return schema.parse(parseJson(await repair(text,issues)));
 }
