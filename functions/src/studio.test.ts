@@ -61,3 +61,9 @@ test('section evidence cannot cite an inaccessible competitor',()=>{
  const {blueprint}=reviewedDraft();blueprint.competitors[0].accessible=false;
  assert.throws(()=>alignBlueprintSources(blueprint as any,examples),/inaccessible/);
 });
+test('server asset binding preserves valid sections and removes references to nonexistent model images',()=>{
+ const {bindContentAssets}=require('./studio-domain');
+ const assets=[{url:'https://images.example/hero.webp',caption:'Illustrative hero',provenance:'generated',sourceUrl:''},{url:'https://images.example/detail.webp',caption:'Illustrative detail',provenance:'generated',sourceUrl:''}];
+ const content={headline:'Home repairs in Phoenix',intro:'Discuss your home repair needs.',imageUrl:'https://example.com/placeholder',services:[{title:'Home repairs',description:'Discuss the repairs you need.'}],about:'Local home repair services.',cta:'Call us',sections:[{id:'about',kind:'about',title:'About us',eyebrow:'',body:'Local home repair services.',items:[],imageIndex:2},{id:'services',kind:'services',title:'Services',eyebrow:'',body:'Home repairs.',items:[],imageIndex:1}]};
+ const bound=bindContentAssets(content,assets);assert.equal(bound.sections[0].imageIndex,null);assert.equal(bound.sections[1].imageIndex,1);assert.equal(bound.imageUrl,assets[0].url);assert.deepEqual(bound.assets,assets);assert.equal(content.sections[0].imageIndex,2);
+});

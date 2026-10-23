@@ -7,7 +7,7 @@ import {AccessGuard} from './access';
 import {gemini,managedSettings,parseJson} from './gemini';
 import {studioAssets} from './studio-assets';
 import {getStorage} from 'firebase-admin/storage';
-import {studioSchema,stageSchema,examplesSchema,analysisSchema,briefSchema,contentSchema,shortSiteId,blueprintSchema,alignBlueprintSources,validateStage} from './studio-domain';
+import {studioSchema,stageSchema,examplesSchema,analysisSchema,briefSchema,contentSchema,shortSiteId,bindContentAssets,blueprintSchema,alignBlueprintSources,validateStage} from './studio-domain';
 import {verifyExampleWebsites,inspectExampleWebsites} from './studio-examples';
 import {enqueueStudio,studioText} from './studio-task';
 const idSchema=z.string().regex(/^[a-f0-9]{32}$/);
@@ -145,7 +145,7 @@ export async function processStudioResearch(jobId:string){
       if(!parsed.success)throw parsed.error;
       let result=parsed.data;
       if(stage==='examples'&&!verifiedCandidates)await verifyExampleWebsites(result as any);
-      if(stage==='content'){await ref.update({progress:70,phase:'Creating website images',updatedAt:now()});const assets=await studioAssets(id,current.business,current.draft.blueprint,job.actor);(result as any).assets=assets;(result as any).imageUrl=assets[0].url;}
+      if(stage==='content'){await ref.update({progress:70,phase:'Creating website images',updatedAt:now()});const assets=await studioAssets(id,current.business,current.draft.blueprint,job.actor);result=bindContentAssets(result as z.infer<typeof contentSchema>,assets);}
       if(stage==='blueprint'){
        const blueprint=result as z.infer<typeof blueprintSchema>;
        for(const competitor of blueprint.competitors)competitor.accessible=!!evidence?.references.find((r:any)=>new URL(r.websiteUrl).hostname.replace(/^www\./,'')===new URL(competitor.websiteUrl).hostname.replace(/^www\./,''))?.observed;
