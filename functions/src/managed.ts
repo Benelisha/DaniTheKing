@@ -3,7 +3,7 @@ import { getFunctions } from "firebase-admin/functions";
 import { getStorage } from "firebase-admin/storage";
 import { z } from "zod";
 import { db, settings, upsertLead } from "./store";
-import { discoveryCandidate } from "./discovery-result";
+import { discoveryCandidate, discoveryResults } from "./discovery-result";
 import { identityFingerprint } from "./google-identity";
 import { gemini, managedSettings, parseJson } from "./gemini";
 import { publishManaged } from "./publishing";
@@ -273,12 +273,7 @@ export async function processManaged(id: string) {
         "research",
         "discovery",
       );
-      const raw = z
-        .object({
-          leads: z.array(z.unknown()).max(20),
-          gaps: z.array(z.string()).default([]),
-        })
-        .parse(parseJson(r.text));
+      const raw = discoveryResults(parseJson(r.text), c.maxCandidates);
       const results = [];
       const rejected = [];
       for (const item of raw.leads) {

@@ -1,7 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseJson } from "./managed-domain";
-import { discoveryCandidate } from "./discovery-result";
+import { discoveryCandidate, discoveryResults } from "./discovery-result";
+
+test("discovery caps excess provider candidates to the saved limit without rejecting the run", () => {
+  const leads = Array.from({ length: 25 }, (_, id) => ({ id }));
+  assert.deepEqual(discoveryResults({ leads, gaps: ["Missing evidence"] }, 20), {
+    leads: leads.slice(0, 20), gaps: ["Missing evidence"],
+  });
+  assert.equal(discoveryResults({ leads }, 3).leads.length, 3);
+  assert.throws(() => discoveryResults({ leads: "invalid" }, 20));
+  assert.throws(() => discoveryResults({ leads }, 21));
+});
 
 test("grounded research accepts one fenced payload with surrounding prose", () => {
   const data = { leads: [{ businessName: "Business with {braces}" }], gaps: [] };

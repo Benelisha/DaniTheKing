@@ -1,4 +1,14 @@
 import { leadSchema } from "./domain";
+import { z } from "zod";
+
+export function discoveryResults(input: unknown, limit: number) {
+  z.number().int().min(1).max(20).parse(limit);
+  const result = z.object({
+    leads: z.array(z.unknown()),
+    gaps: z.array(z.string()).default([]),
+  }).parse(input);
+  return { ...result, leads: result.leads.slice(0, limit) };
+}
 
 // Providers sometimes use null for unknown optional text and omit URL schemes.
 // Normalize formatting only; identity, phone and source validation stay strict.
