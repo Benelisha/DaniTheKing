@@ -52,15 +52,17 @@ export const recoverManagedJobs=onSchedule({schedule:"every 5 minutes",region:"u
 });
 
 // Cloud Tasks owns execution: closing the UI or sleeping a laptop has no effect.
-export const studioTask=onTaskDispatched({region:'us-central1',timeoutSeconds:1800,memory:'2GiB',maxInstances:1,concurrency:1,secrets:[geminiKey],retryConfig:{maxAttempts:5,minBackoffSeconds:60,maxBackoffSeconds:300},rateLimits:{maxConcurrentDispatches:1}},async request=>{
+export const studioTask=onTaskDispatched({region:'us-central1',timeoutSeconds:1800,memory:'2GiB',maxInstances:2,concurrency:1,secrets:[geminiKey],retryConfig:{maxAttempts:1},rateLimits:{maxConcurrentDispatches:1}},async request=>{
+ if(request.data?.runId){const id=request.data.runId;if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))throw Error('Invalid studio run ID');const {processStudioRun}=await import('./studio-run');await processStudioRun(id);return;}
  const id=request.data?.id;if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))throw Error('Invalid studio job ID');
  const {processStudio}=await import('./studio-task');await processStudio(id);
 });
 export const recoverStudioJobs=onSchedule({schedule:'every 5 minutes',region:'us-central1',timeoutSeconds:120},async()=>{
  const {db}=await import('./store');const {enqueueStudio}=await import('./studio-task');
+ const {recoverStudioRuns}=await import('./studio-run');await recoverStudioRuns();
  const lock=(await db().doc('internal/studioWorkerLock').get()).data();
  const jobs=await db().collection('siteJobs').where('status','in',['queued','running','building']).get();
- for(const job of jobs.docs)if(!(lock?.jobId===job.id&&lock.until>Date.now())&&(job.data().leaseUntil||0)<Date.now()){
+ for(const job of jobs.docs)if(!job.data().runId&&!(lock?.jobId===job.id&&lock.until>Date.now())&&(job.data().leaseUntil||0)<Date.now()){
   if((job.data().attempts||0)>=5)await job.ref.update({status:'failed',error:'Hosted worker was interrupted repeatedly. Please retry this step.',updatedAt:new Date().toISOString()});
   else await enqueueStudio(job.id);
  }

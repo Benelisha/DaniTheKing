@@ -1,12 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {hosted}=require('./studio.cjs');
 function database(revision=0){
- const rows=new Map([['siteJobs/test',{stage:'design',status:'queued',leadId:'lead',revision:0,actor:'test'}],['websiteStudios/lead',{revision,draft:{}}],['leads/lead',{businessName:'Test pool care',service:'Pool cleaning',location:'Phoenix',phone:'+16025550123'}]]);
+ const rows=new Map([['siteJobs/test',{stage:'design',status:'queued',leadId:'lead',revision:0,actor:'test'}],['websiteStudios/lead',{revision,jobId:'test',draft:{}}],['leads/lead',{businessName:'Test pool care',service:'Pool cleaning',location:'Phoenix',phone:'+16025550123'}]]);
  const doc=p=>({id:p.split('/').at(-1),update:async v=>rows.set(p,{...rows.get(p),...v}),get:async()=>({exists:rows.has(p),data:()=>rows.get(p)}),collection:name=>({doc:id=>doc(`${p}/${name}/${id||'test'}`)}),p});
  const tx={get:r=>r.get(),set:(r,v)=>rows.set(r.p,v),update:(r,v)=>rows.set(r.p,{...rows.get(r.p),...v}),delete:r=>rows.delete(r.p),create:(r,v)=>rows.set(r.p,v)};
  return {rows,doc,runTransaction:fn=>fn(tx)};
 }
 test('hosted design saves a durable result and duplicate delivery does not rerun it',async t=>{
+ t.mock.method(require('../functions/lib/studio-research'),'savedCompetitorResearch',async(_db,_lead,_examples,_dir,capture)=>capture());
  const quality=require('./studio-quality.cjs');t.mock.method(quality,'openBrowser',async()=>({close:async()=>{}}));t.mock.method(quality,'references',async()=>[{websiteUrl:'https://competitor.example',observed:true,visualEvidence:{colors:['#005544','#ffffff','#112211']}}]);
  process.env.STUDIO_HOSTED='true';const db=database();let calls=0;
  const model=async(_dir,_file,schema,_prompt,images)=>{assert.deepEqual(images,[]);calls++;return schema.parse({visualStyle:'minimal',serviceLayout:'list',imageShape:'rounded',fontStyle:'modern',surface:'#ffffff',onAccent:'#ffffff',onInk:'#ffffff',accent:'#005544',background:'#ffffff',ink:'#112211',heroLayout:'split',cornerRadius:12,rationale:'Clear hierarchy and accessible color contrast.'});};

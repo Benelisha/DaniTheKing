@@ -1,3 +1,5 @@
+import {db} from './store';
+import {savedCompetitorResearch} from './studio-research';
 import {exampleSchema} from './studio-domain';
 import {z} from 'zod';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
@@ -22,14 +24,14 @@ export async function verifyExampleWebsites(examples:z.infer<typeof exampleSchem
   }
  }
 }
-export async function inspectExampleWebsites(examples:z.infer<typeof exampleSchema>[]){
+export async function inspectExampleWebsites(leadId:string,examples:z.infer<typeof exampleSchema>[]){
  process.env.STUDIO_HOSTED='true';
  const quality=require('../studio-runtime/worker/studio-quality.cjs');
  const dir=await mkdtemp(path.join(tmpdir(),'studio-research-'));
  let browser:any;
  try{
   browser=await quality.openBrowser();
-  const refs=await quality.references(browser,examples,dir);
+  const refs=await savedCompetitorResearch(db(),leadId,examples,dir,()=>quality.references(browser,examples,dir));
   if(!refs.some((r:any)=>r.observed))throw Error('Competitor websites could not be inspected. Replace inaccessible examples and retry.');
   const parts=await Promise.all(refs.filter((r:any)=>r.screenshot).map(async(r:any)=>({inlineData:{mimeType:'image/png',data:(await readFile(r.screenshot)).toString('base64')}})));
   return {references:refs.map(({screenshot,...ref}:any)=>ref),parts};

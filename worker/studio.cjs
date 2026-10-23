@@ -1,3 +1,4 @@
+const research=require('../functions/lib/studio-research');
 // Outbound Firestore queue: no public listener/tunnel or browser credentials.
 const fs=require('node:fs/promises'),path=require('node:path'),{randomUUID}=require('node:crypto');
 const {designSchema,contentSchema,reviewSchema,assertReviewReady,validateSectionContent,blueprintSchema,alignBlueprintSources,bindContentAssets}=require('../functions/lib/studio-domain');
@@ -15,7 +16,7 @@ function designSchemaFor(refs){
 const workerId=randomUUID();
 let db,hostedModel;
 async function claim(ref){return db.runTransaction(async tx=>{const lock=db.doc('internal/studioWorkerLock'),[s,l]=await Promise.all([tx.get(ref),tx.get(lock)]);if(!s.exists||!['queued','running','building'].includes(s.data().status)||(l.exists&&l.data().until>Date.now()))return false;tx.set(lock,{workerId,jobId:ref.id,until:Date.now()+120000});tx.update(ref,{status:'running',progress:5,phase:'Preparing website',updatedAt:new Date().toISOString(),attempts:(s.data().attempts||0)+1});return true;});}
-async function fenced(ref,patch={}){await db.runTransaction(async tx=>{const lock=db.doc('internal/studioWorkerLock'),l=await tx.get(lock);if(l.data()?.workerId!==workerId||l.data()?.jobId!==ref.id||l.data().until<Date.now())throw Error('Worker lease lost');tx.update(lock,{until:Date.now()+120000});tx.update(ref,{...patch,updatedAt:new Date().toISOString()});});}
+async function fenced(ref,patch={}){await db.runTransaction(async tx=>{const lock=db.doc('internal/studioWorkerLock'),[l,j]=await Promise.all([tx.get(lock),tx.get(ref)]);if(!['running','building'].includes(j.data()?.status))throw Error('Studio job stopped');if(l.data()?.workerId!==workerId||l.data()?.jobId!==ref.id||l.data().until<Date.now())throw Error('Worker lease lost');tx.update(lock,{until:Date.now()+120000});tx.update(ref,{...patch,updatedAt:new Date().toISOString()});});}
 async function modelJSON(dir,filename,schema,prompt,images=[]){return hostedModel(dir,filename,schema,prompt+'\n'+studioDirection+(filename==='review'?'\n'+studioReviewDirection:''),images);}
 function comparisonModelSchema(examples){
  const row=z.object({strengthsMatched:z.array(z.string()),remainingGaps:z.array(z.string())});
@@ -40,7 +41,7 @@ async function processJob(ref){
   let draft={...initial};
   if(job.stage==='design'){
    const browser=await quality.openBrowser();
-   try{await fenced(ref,{progress:10,phase:'Extracting competitor palettes and styles'});const refs=await quality.references(browser,draft.examples,dir);
+   try{await fenced(ref,{progress:10,phase:'Extracting competitor palettes and styles'});const refs=await research.savedCompetitorResearch(db,job.leadId,draft.examples,dir,()=>quality.references(browser,draft.examples,dir));
     draft.design=quality.bindPalette(await modelJSON(dir,'design',designSchemaFor(refs),'Read brief.json and competitors.json. Derive all colors, style, typography and composition only from observed visualEvidence and competitor screenshots. Return exact observed hex colors for accent, background, ink, surface, onAccent, onInk. Cite source URLs and observations for every style control in rationale. Choose accessible foreground/background pairs; do not invent colors or a house style.',refs.filter(r=>r.screenshot).map(r=>r.screenshot)),refs);
    }finally{await browser.close();}
    delete draft.review;delete draft.reviewChecks;
@@ -51,7 +52,7 @@ async function processJob(ref){
    try{
     await fenced(ref,{progress:25,phase:'Inspecting competitor websites'});
     console.log(`Studio ${ref.id}: capturing competitors`);
-    const refs=await quality.references(browser,draft.examples,dir);
+    const refs=await research.savedCompetitorResearch(db,job.leadId,draft.examples,dir,()=>quality.references(browser,draft.examples,dir));
     await fenced(ref,{progress:40,phase:'Checking the current desktop and mobile website',observedCompetitors:refs.filter(r=>r.observed).length});
     console.log(`Studio ${ref.id}: capturing desktop/mobile draft`);
     const before=await quality.capture(browser,{business,...draft},dir,'before');
@@ -79,7 +80,7 @@ async function processJob(ref){
    }finally{await browser.close();}
   }
   if(lost)throw Error('Worker lease lost');
-  await db.runTransaction(async tx=>{const [s,l,k]=await Promise.all([tx.get(studioRef),tx.get(db.doc(`leads/${job.leadId}`)),tx.get(db.doc('internal/studioWorkerLock'))]);if(k.data()?.workerId!==workerId||k.data()?.jobId!==ref.id||k.data()?.until<Date.now())throw Error('Worker lease lost');if(!l.exists||l.data().removedAt||s.data()?.revision!==job.revision)throw Error('Studio changed during design; rerun design.');if(factsFingerprint(facts(l.data()))!==factsFingerprint(business))throw Error('Business facts changed during review. Retry.');tx.update(studioRef,{...(job.stage==='review'?{reviewedFactsFingerprint:factsFingerprint(business)}:{}),draft,revision:job.revision+1,updatedAt:new Date().toISOString()});if(job.requestId)tx.update(studioRef.collection('revisionRequests').doc(job.requestId),{status:'completed',completedAt:new Date().toISOString(),resultRevision:job.revision+1});tx.update(ref,{status:'completed',progress:100,phase:'Ready to review',updatedAt:new Date().toISOString(),buildVerified:true});tx.create(studioRef.collection('history').doc(),{action:job.stage,draft,revision:job.revision+1,at:new Date().toISOString(),actor:job.actor});});
+  await db.runTransaction(async tx=>{const [s,l,k,j]=await Promise.all([tx.get(studioRef),tx.get(db.doc(`leads/${job.leadId}`)),tx.get(db.doc('internal/studioWorkerLock')),tx.get(ref)]);if(!['running','building'].includes(j.data()?.status)||s.data()?.jobId!==ref.id)throw Error('Studio job superseded');if(k.data()?.workerId!==workerId||k.data()?.jobId!==ref.id||k.data()?.until<Date.now())throw Error('Worker lease lost');if(!l.exists||l.data().removedAt||s.data()?.revision!==job.revision)throw Error('Studio changed during design; rerun design.');if(factsFingerprint(facts(l.data()))!==factsFingerprint(business))throw Error('Business facts changed during review. Retry.');tx.update(studioRef,{...(job.stage==='review'?{reviewedFactsFingerprint:factsFingerprint(business)}:{}),draft,revision:job.revision+1,updatedAt:new Date().toISOString()});if(job.requestId)tx.update(studioRef.collection('revisionRequests').doc(job.requestId),{status:'completed',completedAt:new Date().toISOString(),resultRevision:job.revision+1});tx.update(ref,{status:'completed',progress:100,phase:'Ready to review',updatedAt:new Date().toISOString(),buildVerified:true});tx.create(studioRef.collection('history').doc(),{action:job.stage,draft,revision:job.revision+1,at:new Date().toISOString(),actor:job.actor});});
   console.log(`Studio ${job.stage} ${ref.id} completed; shared Expo build verified.${draft.review?" Review ready: "+draft.review.ready:""}`);
  }catch(e){console.error(`Design ${ref.id}: ${e.message}`);try{await fenced(ref,{status:'failed',error:e.message.slice(0,1500)});const failedJob=(await ref.get()).data();if(failedJob?.requestId)await db.doc(`websiteStudios/${failedJob.leadId}/revisionRequests/${failedJob.requestId}`).update({status:'failed',error:e.message.slice(0,1500)});}catch{}}
  finally{clearInterval(timer);if(process.env.STUDIO_HOSTED==='true')await fs.rm(path.join(require('node:os').tmpdir(),'studio',ref.id),{recursive:true,force:true});await db.runTransaction(async tx=>{const r=db.doc('internal/studioWorkerLock'),l=await tx.get(r);if(l.data()?.workerId===workerId&&l.data()?.jobId===ref.id)tx.delete(r);}).catch(()=>{});}

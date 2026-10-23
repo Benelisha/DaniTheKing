@@ -3,8 +3,8 @@ import {readFile,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {db} from './store';
 import {gemini,managedSettings,parseJson} from './gemini';
-export async function enqueueStudio(id:string){
- await getFunctions().taskQueue('locations/us-central1/functions/studioTask').enqueue({id},{dispatchDeadlineSeconds:1800});
+export async function enqueueStudio(id:string,run=false){
+ await getFunctions().taskQueue('locations/us-central1/functions/studioTask').enqueue(run?{runId:id}:{id},{...(run?{id}:{}),dispatchDeadlineSeconds:1800});
 }
 export async function studioText(prompt:string,config:Awaited<ReturnType<typeof managedSettings>>,parts:{inlineData:{mimeType:string;data:string}}[]=[],mode:'text'|'research'='text'){
  try{return await gemini(prompt,config,mode,parts,{studio:true});}catch(error){

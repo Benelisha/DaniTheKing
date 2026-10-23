@@ -1,7 +1,7 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useEffect,useState} from 'react';
 import {Modal,View,Text,ScrollView,Pressable,useWindowDimensions,Image} from 'react-native';
 import {api} from './firebase';
-import {generateAll} from '../functions/src/studio-sequence';
+import {terminalRun} from '../functions/src/studio-sequence';
 import {Button,Field,ExternalLink,Icon,s} from './ui';
 import {Lead} from './types';
 import BusinessWebsite from '../shared/BusinessWebsite';
@@ -11,15 +11,15 @@ const defaultBrief={direction:'',audience:'',sections:'',features:['contact']};
 export function WebsiteStudioButton({onPress}:{onPress:()=>void}){return <Pressable onPress={e=>e.stopPropagation()}><Button label="Website studio" icon="edit-2" onPress={onPress}/></Pressable>;}
 export function WebsiteStudio({lead,refresh,close}:{lead:Lead;refresh:()=>Promise<void>;close:()=>void}){
  const {width}=useWindowDimensions();const [state,setState]=useState<any>(null),[draft,setDraft]=useState<any>({}),[step,setStep]=useState(0),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false),[error,setError]=useState(''),[mobile,setMobile]=useState(false),[previewWidth,setPreviewWidth]=useState(0),[instructions,setInstructions]=useState(''),[requestId,setRequestId]=useState(''),[liveSite,setLiveSite]=useState<any>(null),[showLive,setShowLive]=useState(false);
- const [auto,setAuto]=useState(false);const sequence=useRef(0),stopRequested=useRef(false);
- useEffect(()=>()=>{sequence.current++;},[lead.id]);
- const closeStudio=()=>{sequence.current++;close();};
+ const closeStudio=()=>close();
  const base=`/sites/leads/${lead.id}`;
  useEffect(()=>{if(!state?.publishedUrl)return;let active=true;const slug=new URL(state.publishedUrl).pathname.split('/').filter(Boolean)[0];fetch(`https://daniboy-be1c0.web.app/api/public/sites/${encodeURIComponent(slug)}`,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('Could not load the published preview.');return r.json();}).then(v=>{if(active)setLiveSite(v);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[state?.publishedUrl,state?.publishedRevision]);
  const accept=(v:any)=>{setState(v);setDraft(v.draft);setDirty(false);};
  useEffect(()=>{let active=true;api(base).then(v=>{if(active)accept(v);}).catch(e=>setError(e.message));return()=>{active=false;};},[lead.id]);
- const running=state?.job&&!['completed','failed','cancelled'].includes(state.job.status);
- useEffect(()=>{if(auto||(!running&&!busy))return;let active=true,failures=0;const timer=setInterval(()=>{void api<any>(base).then(v=>{if(active){failures=0;setError('');setState(v);if(['completed','failed','cancelled'].includes(v.job?.status)){setDraft(v.draft);setDirty(false);}}}).catch(()=>{if(++failures>=3)setError('Connection interrupted. Your generation continues; reconnecting…');});},3000);return()=>{active=false;clearInterval(timer);};},[running,busy,auto,base]);
+ const auto=!!state?.generation&&!terminalRun.has(state.generation.status);
+ const running=auto||state?.job&&!['completed','failed','cancelled'].includes(state.job.status);
+ // Polling observes backend-owned progress; closing this view has no execution side effects.
+ useEffect(()=>{if(!running)return;let active=true,failures=0;const timer=setInterval(()=>{void api<any>(base).then(v=>{if(active){failures=0;accept(v);setError(v.generation?.status==='failed'?v.generation.error||'Generation failed. Try again to resume.':'');const stage=v.generation?.activeStage;if(stage)setStep(stage==='review'?4:Math.max(0,steps.findIndex(([key])=>key===stage)));}}).catch(()=>{if(++failures>=3)setError('Connection interrupted. Your generation continues; reconnecting…');});},3000);return()=>{active=false;clearInterval(timer);};},[running,base]);
  const change=(key:string,value:any)=>{if(busy||running)return;setDraft((d:any)=>({...d,[key]:value}));setDirty(true);};
  async function save(){const v=await api<any>(base,'PATCH',{revision:state.revision,draft});accept(v);return v;}
  async function action(kind:'save'|'generate'|'publish'|'images',stage:string=steps[step][0]){
@@ -34,14 +34,15 @@ export function WebsiteStudio({lead,refresh,close}:{lead:Lead;refresh:()=>Promis
  }
  async function startAll(){
   if(!state||busy||running)return;
-  const token=++sequence.current;stopRequested.current=false;setAuto(true);setBusy(true);setError('');
-  try{
-   const initial=dirty?await save():state;
-   await generateAll({initial,active:()=>sequence.current===token&&!stopRequested.current,read:()=>api<any>(base),generate:async(stage,revision)=>{const v=await api<any>(`${base}/steps/${stage}`,'POST',{revision});if(sequence.current===token)accept(v);return v;},update:(v,stage)=>{accept(v);setStep(stage==='review'?4:steps.findIndex(([key])=>key===stage));},wait:()=>new Promise(resolve=>setTimeout(resolve,3000))});
-  }catch(e){if(sequence.current===token)setError((e as Error).message);}
-  finally{if(sequence.current===token){setAuto(false);setBusy(false);}}
+  setBusy(true);setError('');
+  try{const initial=dirty?await save():state;accept(await api(`${base}/generate`,'POST',{revision:initial.revision,requestId:globalThis.crypto.randomUUID()}));}
+  catch(e){setError((e as Error).message);try{accept(await api(base));}catch{}}
+  finally{setBusy(false);}
  }
- function stopAll(){stopRequested.current=true;}
+ async function stopAll(){
+  if(busy)return;setBusy(true);
+  try{accept(await api(`${base}/generation/stop`,'POST',{}));}catch(e){setError((e as Error).message);}finally{setBusy(false);}
+ }
  async function requestRevision(){
   if(busy||running||!instructions.trim()||dirty)return;
   setBusy(true);setError('');
@@ -52,17 +53,19 @@ export function WebsiteStudio({lead,refresh,close}:{lead:Lead;refresh:()=>Promis
  function sectionsChanged(sections:any[]){change('blueprint',{...draft.blueprint,sections});}
  function sectionControls(i:number){const rows=draft.blueprint.sections;return <View style={{flexDirection:'row',gap:8}}><Button label="Move up" subtle disabled={busy||!!running||i===0} onPress={()=>{const next=[...rows];[next[i-1],next[i]]=[next[i],next[i-1]];sectionsChanged(next);}}/><Button label="Move down" subtle disabled={busy||!!running||i===rows.length-1} onPress={()=>{const next=[...rows];[next[i+1],next[i]]=[next[i],next[i+1]];sectionsChanged(next);}}/><Button label="Remove section" subtle disabled={busy||!!running||rows.length<=2} onPress={()=>sectionsChanged(rows.filter((_:any,j:number)=>j!==i))}/></View>;}
  const key=steps[step][0],preview=draft.content&&draft.design;
- const percent=typeof state?.job?.progress==='number'?Math.max(0,Math.min(100,state.job.progress)):null;
- const working=running?`${state.job.phase||'Working'}${percent!=null?` · ${percent}%`: '…'}`:'Working…';
+ const stageWorking=state?.job&&!['completed','failed','cancelled'].includes(state.job.status);
+ const percent=auto?Math.round(100*((state.generation.steps||[]).filter((item:any)=>item.status==='completed').length+(stageWorking?(state.job.progress||0)/100:0))/Math.max(1,state.generation.steps?.length||1)):typeof state?.job?.progress==='number'?Math.max(0,Math.min(100,state.job.progress)):null;
+ const working=running?`${(stageWorking?state.job?.phase:null)||(auto?'Starting background generation':'Working')}${percent!=null?` · ${percent}%`: '…'}`:'Working…';
  const f=(label:string,value:string,onChange:(v:string)=>void,multiline=false)=><Field label={label} value={value||''} onChangeText={onChange} multiline={multiline} editable={!busy&&!running}/>;
  return <Modal visible transparent animationType="fade" onRequestClose={closeStudio}><View style={{flex:1,backgroundColor:'#142d25aa',padding:0,justifyContent:'center',alignItems:'center'}}><View style={{width:'100%',maxWidth:'100%',height:'100%',maxHeight:'100%',backgroundColor:'#fff',borderRadius:0,overflow:'hidden'}}>
  <View style={{padding:24,borderBottomWidth:1,borderColor:'#dfe7e2',flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12}}><View style={{flex:1,gap:5}}><Text style={{fontSize:11,letterSpacing:2,color:'#537367',fontWeight:'700'}}>WEBSITE STUDIO</Text><Text style={{fontSize:24,fontWeight:'700',color:'#183b2d'}}>{lead.businessName}</Text><Text style={s.body}>Draft revision {state?.revision||0}{dirty?' · Unsaved edits':''}{state?.publishedRevision!=null?` · Published revision ${state.publishedRevision}`:' · Not published'}</Text>{state?.publishedUrl&&<ExternalLink url={state.publishedUrl} label={state.publishedUrl}/>}</View><Pressable accessibilityRole="button" accessibilityLabel="Close studio" onPress={closeStudio} style={{padding:12}}><Icon name="x" size={24}/></Pressable></View>
  <View style={{flex:1,flexDirection:width<850?'column':'row'}}><ScrollView horizontal={width<850} style={width<850?{maxHeight:76,borderBottomWidth:1,borderColor:'#dfe7e2'}:{width:230,maxWidth:230,backgroundColor:'#f5f8f4'}} contentContainerStyle={{padding:16,gap:8}}>{steps.map(([k,title],i)=><Pressable key={k} accessibilityRole="button" onPress={()=>setStep(i)} style={{padding:16,borderRadius:10,backgroundColor:step===i?'#1c624b':'transparent',gap:5,minWidth:140}}><Text style={{color:step===i?'#fff':'#284c3c',fontWeight:'700'}}>{i+1}. {title}</Text><Text style={{fontSize:11,color:step===i?'#c5e6d7':'#6e8175'}}>{k==='design'?(draft.review?(draft.review.ready?'Passed — review preview':'Needs improvement'):'Not started'):k==='examples'&&state?.invalidExamples?'Needs replacement':draft[k]?'Ready to review':'Not started'}</Text></Pressable>)}</ScrollView>
  <ScrollView style={{flex:1}} contentContainerStyle={{padding:width<700?20:32,gap:20}}>
  <View style={{gap:8}}><Text style={{fontSize:30,fontWeight:'700',color:'#193c2e'}}>{steps[step][1]}</Text><Text style={s.body}>{steps[step][2]}</Text></View>
- <View style={{gap:10}}><View style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}><Button label={auto?'Generating all…':'Generate all'} disabled={!state||busy||!!running} onPress={()=>void startAll()}/>{auto&&<Button label="Stop after current step" subtle onPress={stopAll}/>}</View><Text style={s.body}>Generate the remaining steps through quality review. Keep this window open; closing it stops starting further steps. Review the result and publish when ready.</Text></View>
+ <View style={{gap:10}}><View style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}><Button label={auto?'Generating all…':'Generate all'} disabled={!state||busy||!!running} onPress={()=>void startAll()}/>{auto&&<Button label={state.generation.stopRequested?'Stopping after current step…':'Stop after current step'} disabled={busy||state.generation.stopRequested} subtle onPress={()=>void stopAll()}/>}</View><Text style={s.body}>Generate the remaining steps through quality review. You can close this window and return later; generation continues in the cloud. Saved competitor research and completed steps are reused.</Text></View>
+ {!error&&state?.generation?.status==='failed'&&<Text style={s.error}>{state.generation.error} Press Generate all to resume saved work.</Text>}{state?.generation?.status==='needs_review'&&<Text style={s.body}>Generation finished. Quality review needs attention; inspect the report before publishing.</Text>}{state?.generation?.status==='completed'&&<Text style={s.body}>Generation complete. Review the preview before publishing.</Text>}{auto&&state.generation.steps?.map((item:any)=><Text key={item.stage} style={s.body}>{item.stage} · {item.status}</Text>)}
  {!!error&&<View style={{gap:8}}><Text style={s.error}>{error}</Text><Button label="Reload saved studio" subtle disabled={busy||!!running} onPress={()=>{setBusy(true);void api(base).then(v=>{accept(v);setError("");}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}/></View>}{!busy&&state?.job?.status==='failed'&&state.job.stage===key&&<Text style={s.error}>Last step failed: {state.job.error}</Text>}
- {(running||busy)&&<View style={[s.card,{gap:8}]}><Text accessibilityLiveRegion="polite" style={s.h2}>{working}</Text>{running&&percent!=null&&<><View accessibilityRole="progressbar" accessibilityValue={{min:0,max:100,now:percent}} style={{height:8,backgroundColor:'#dfe7e2',borderRadius:4,overflow:'hidden'}}><View style={{height:8,width:`${percent}%`,backgroundColor:'#1c624b'}}/></View><Text style={s.body}>{100-percent}% of workflow milestones remaining</Text></>}<Text style={s.body}>{state?.job?.phase||(['design','review'].includes(state?.job?.stage)?(state?.job?.status==='building'?'Rendering and checking the website in the cloud':state?.job?.stage==='review'?'Comparing and improving in the cloud':'Designing in the cloud'):'Researching in the cloud…')}</Text>{!['design','review'].includes(state?.job?.stage)&&<Text style={s.body}>Keep the studio open while this research request finishes. Saved results will be available when you return.</Text>}</View>}
+ {(running||busy)&&<View style={[s.card,{gap:8}]}><Text accessibilityLiveRegion="polite" style={s.h2}>{working}</Text>{running&&percent!=null&&<><View accessibilityRole="progressbar" accessibilityValue={{min:0,max:100,now:percent}} style={{height:8,backgroundColor:'#dfe7e2',borderRadius:4,overflow:'hidden'}}><View style={{height:8,width:`${percent}%`,backgroundColor:'#1c624b'}}/></View><Text style={s.body}>{100-percent}% of workflow milestones remaining</Text></>}<Text style={s.body}>{state?.job?.phase||(['design','review'].includes(state?.job?.stage)?(state?.job?.status==='building'?'Rendering and checking the website in the cloud':state?.job?.stage==='review'?'Comparing and improving in the cloud':'Designing in the cloud'):'Researching in the cloud…')}</Text>{!['design','review'].includes(state?.job?.stage)&&<Text style={s.body}>Research runs in the cloud. Saved results will be available when you return.</Text>}</View>}
  {key!=='design'&&<View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}><Button label={busy||running?working:({examples:'Find 5 examples',blueprint:'Research UX & plan sections',brief:'Draft website brief',content:'Draft content & image',design:'Create design',review:'Compare & improve'} as any)[key]} disabled={!state||busy||!!running} onPress={()=>void action('generate')}/><Button label="Save edits" subtle disabled={busy||!!running||!dirty} onPress={()=>void action('save')}/></View>}
  {key==='examples'&&<>{!draft.examples&&<Text style={s.body}>Find examples automatically, or enter five real business websites below.</Text>}{(draft.examples||Array.from({length:5},emptyExample)).map((e:any,i:number)=><View key={i} style={[s.card,{gap:12}]}><Text style={s.h2}>Example {i+1}</Text>{['businessName','websiteUrl','notes'].map(field=>f(({businessName:'Business name',websiteUrl:'Website URL',notes:'What you observed'} as any)[field],e[field],v=>{const rows=[...(draft.examples||Array.from({length:5},emptyExample))];rows[i]={...rows[i],[field]:v};change('examples',rows);},field==='notes'))}{!!e.websiteUrl&&<ExternalLink url={e.websiteUrl} label="Inspect website"/>}</View>)}</>}
  {key==='blueprint'&&<>{!draft.blueprint?<Text style={s.body}>Inspect each competitor’s actual sections, content and conversion paths. Build an editable plan for a complete website.</Text>:<>

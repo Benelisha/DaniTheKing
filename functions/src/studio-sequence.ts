@@ -1,23 +1,12 @@
-// The browser owns this sequence; the server still owns each individual job.
+// Shared ordering only; the backend worker owns execution and advancement.
 export const generationStages=['examples','blueprint','brief','content','design','review'] as const;
-export async function generateAll(options:{initial:any;read:()=>Promise<any>;generate:(stage:string,revision:number)=>Promise<any>;active:()=>boolean;update:(state:any,stage:string)=>void;wait:()=>Promise<void>}){
- let state=options.initial;
+export const terminalRun=new Set(['completed','failed','cancelled','needs_review']);
+export function remainingStages(state:any){
  const start=state.invalidExamples?0:generationStages.findIndex(stage=>!state.draft?.[stage]||(stage==='review'&&(!state.draft.review.ready||!state.draft.reviewChecks?.passed)));
- if(start<0)return state;
- for(const stage of generationStages.slice(start)){
-  if(!options.active())return state;
-  state=await options.generate(stage,state.revision);
-  if(!options.active())return state;
-  options.update(state,stage);
-  const jobId=state.jobId;
-  while(!['completed','failed','cancelled'].includes(state.job?.status)){
-   await options.wait();if(!options.active())return state;
-   state=await options.read();if(!options.active())return state;
-   if(state.jobId!==jobId)throw Error('Generation changed in another window. Generate all stopped.');
-   options.update(state,stage);
-  }
-  if(state.job.status!=='completed')throw Error(`${stage}: ${state.job.error||'Generation was cancelled.'}`);
-  if(stage==='review'&&(!state.draft.review?.ready||!state.draft.reviewChecks?.passed))throw Error('All steps finished. Quality review needs attention; inspect the report before publishing.');
- }
- return state;
+ return start<0?[]:generationStages.slice(start);
+}
+// Stop at the first failed stage; successful outputs are persisted by each service.
+export async function runStages(options:{stages:readonly string[];active:()=>Promise<boolean>;execute:(stage:string)=>Promise<void>}){
+ for(const stage of options.stages){if(!await options.active())return false;await options.execute(stage);}
+ return true;
 }
