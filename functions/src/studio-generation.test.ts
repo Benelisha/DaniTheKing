@@ -24,3 +24,31 @@ test('incomplete-response diagnostics expose counts and reason without request o
  await assert.rejects(provider.gemini('private-prompt-text',managedSettingsSchema.parse({}),'text',[],{studio:true}),(error:any)=>error.finishReason==='MAX_TOKENS');
  const logged=JSON.stringify(logs);assert.match(logged,/MAX_TOKENS/);assert.match(logged,/2048/);assert.doesNotMatch(logged,/private-/);
 });
+test('recitation regenerates research once with original summaries and preserves grounding tools',async t=>{
+ t.mock.method(provider.geminiKey,'value',()=> 'test-key');
+ t.mock.method(console,'warn',()=>{});
+ const requests:any[]=[];
+ t.mock.method(globalThis,'fetch',async(_url:any,init:any)=>{
+  requests.push(JSON.parse(init.body));
+  return new Response(JSON.stringify({candidates:[requests.length===1?{finishReason:'RECITATION',content:{parts:[{text:'blocked-source-copy'}]}}:{finishReason:'STOP',content:{parts:[{text:'{"examples":[]}'}]},groundingMetadata:{webSearchQueries:['local handyman']}}]}));
+ });
+ const result=await provider.gemini('Find five verified handyman websites. Return the required JSON.',managedSettingsSchema.parse({}),'research');
+ assert.equal(result.text,'{"examples":[]}');assert.equal(requests.length,2);
+ assert.deepEqual(requests[1].tools,requests[0].tools);assert.deepEqual(result.grounding.webSearchQueries,['local handyman']);
+ assert.match(requests[1].contents[0].parts[0].text,/Find five verified handyman websites/);
+ assert.match(requests[1].contents[0].parts[0].text,/do not quote or reproduce/);
+ assert.doesNotMatch(JSON.stringify(requests[1]),/blocked-source-copy/);
+});
+test('recitation retry is bounded and provides an actionable error',async t=>{
+ t.mock.method(provider.geminiKey,'value',()=> 'test-key');t.mock.method(console,'warn',()=>{});let calls=0;
+ t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(JSON.stringify({candidates:[{finishReason:'RECITATION'}]}));});
+ await assert.rejects(provider.gemini('prompt',managedSettingsSchema.parse({})),(error:any)=>error.finishReason==='RECITATION'&&/Retry this step/.test(error.message));
+ assert.equal(calls,2);
+});
+test('safety, missing candidates and image recitation are not retried',async t=>{
+ t.mock.method(provider.geminiKey,'value',()=> 'test-key');t.mock.method(console,'warn',()=>{});
+ for(const [response,mode] of [[{candidates:[{finishReason:'SAFETY'}]},'research'],[{promptFeedback:{blockReason:'SAFETY'}},'text'],[{candidates:[{finishReason:'RECITATION'}]},'image']] as const){
+  let calls=0;const mock=t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(JSON.stringify(response));});
+  await assert.rejects(provider.gemini('prompt',managedSettingsSchema.parse({}),mode));assert.equal(calls,1);mock.mock.restore();
+ }
+});
